@@ -1,0 +1,19 @@
+[project]
+name = "starbucks-mcp"
+version = "0.1.0"
+description = "Starbucks MCP Server Demo - AI Agent Coffee Ordering"
+requires-python = ">=3.13"
+dependencies = [
+    "mcp[cli]>=1.9.0",
+    "httpx>=0.28.0",
+    "click>=8.1.0",
+    "rich>=13.0.0",
+]
+
+[project.scripts]
+starbucks-mcp = "starbucks_mcp.server:main"
+sbux = "starbucks_mcp.cli:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

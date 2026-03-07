@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Starbucks MCP Server - AI Agent Coffee Integration</title>
+  <style>
+    :root {
+      --sbux-green: #00704A;
+      --sbux-green-dark: #1E3932;
+      --sbux-gold: #CBA258;
+      --sbux-cream: #F2F0EB;
+      --sbux-white: #FFFFFF;
+      --sbux-black: #000000;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+      color: var(--sbux-black);
+      background: var(--sbux-white);
+      line-height: 1.6;
+    }
+
+    /* Hero */
+    .hero {
+      background: linear-gradient(135deg, var(--sbux-green-dark) 0%, var(--sbux-green) 100%);
+      color: var(--sbux-white);
+      padding: 80px 20px;
+      text-align: center;
+    }
+    .hero h1 {
+      font-size: 2.5rem;
+      margin-bottom: 16px;
+      font-weight: 700;
+    }
+    .hero .subtitle {
+      font-size: 1.2rem;
+      opacity: 0.9;
+      max-width: 600px;
+      margin: 0 auto 32px;
+    }
+    .hero .badge {
+      display: inline-block;
+      background: var(--sbux-gold);
+      color: var(--sbux-green-dark);
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin: 4px;
+    }
+
+    /* Section */
+    section {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 60px 20px;
+    }
+    section h2 {
+      font-size: 1.8rem;
+      color: var(--sbux-green-dark);
+      margin-bottom: 24px;
+      text-align: center;
+    }
+    section h3 {
+      font-size: 1.2rem;
+      color: var(--sbux-green);
+      margin: 24px 0 12px;
+    }
+
+    /* Architecture */
+    .arch-diagram {
+      background: var(--sbux-cream);
+      border-radius: 12px;
+      padding: 32px;
+      margin: 24px 0;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.85rem;
+      line-height: 1.8;
+      overflow-x: auto;
+      white-space: pre;
+      text-align: center;
+    }
+
+    /* Tools grid */
+    .tools-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin-top: 24px;
+    }
+    .tool-card {
+      background: var(--sbux-cream);
+      border-radius: 12px;
+      padding: 24px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .tool-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+    }
+    .tool-card .tool-name {
+      font-family: 'SF Mono', monospace;
+      font-size: 0.9rem;
+      color: var(--sbux-green);
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .tool-card .tool-desc {
+      font-size: 0.95rem;
+      color: #333;
+      margin-bottom: 8px;
+    }
+    .tool-card .tool-example {
+      font-size: 0.85rem;
+      color: #666;
+      font-style: italic;
+    }
+
+    /* Code block */
+    .code-block {
+      background: var(--sbux-green-dark);
+      color: #e0e0e0;
+      border-radius: 12px;
+      padding: 24px;
+      margin: 16px 0;
+      overflow-x: auto;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.85rem;
+      line-height: 1.6;
+    }
+    .code-block .comment { color: #6a9955; }
+    .code-block .string { color: #ce9178; }
+    .code-block .keyword { color: #569cd6; }
+    .code-block .cmd { color: var(--sbux-gold); }
+
+    /* Steps */
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin: 24px 0;
+    }
+    .step {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+    }
+    .step-num {
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      background: var(--sbux-green);
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+    .step-content h4 {
+      font-size: 1rem;
+      margin-bottom: 4px;
+    }
+    .step-content p {
+      font-size: 0.9rem;
+      color: #555;
+    }
+
+    /* Clients */
+    .clients-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin: 24px 0;
+      text-align: center;
+    }
+    .client-card {
+      background: var(--sbux-cream);
+      border-radius: 12px;
+      padding: 20px 16px;
+    }
+    .client-card .name {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .client-card .status {
+      font-size: 0.85rem;
+      color: var(--sbux-green);
+    }
+
+    /* Footer */
+    footer {
+      background: var(--sbux-green-dark);
+      color: rgba(255,255,255,0.7);
+      text-align: center;
+      padding: 32px 20px;
+      font-size: 0.85rem;
+    }
+    footer a { color: var(--sbux-gold); text-decoration: none; }
+
+    /* Scenario */
+    .scenario {
+      background: var(--sbux-cream);
+      border-radius: 12px;
+      padding: 32px;
+      margin: 24px 0;
+      font-size: 0.95rem;
+      line-height: 2;
+    }
+    .scenario .user { color: var(--sbux-green-dark); font-weight: 600; }
+    .scenario .agent { color: var(--sbux-green); }
+    .scenario .result {
+      background: white;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 12px;
+      border-left: 4px solid var(--sbux-green);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Hero -->
+  <div class="hero">
+    <h1>Starbucks MCP Server</h1>
+    <p class="subtitle">
+      让 AI Agent 通过 MCP 协议直接查询星巴克门店、浏览菜单、检查库存、获取促销活动
+    </p>
+    <span class="badge">MCP Protocol</span>
+    <span class="badge">Python 3.13</span>
+    <span class="badge">6 Tools</span>
+    <span class="badge">Phase 1 Demo</span>
+  </div>
+
+  <!-- Architecture -->
+  <section>
+    <h2>Architecture</h2>
+    <div class="arch-diagram">
+┌──────────────────────────────────────────────┐
+│          AI Agent / MCP Client Layer         │
+│                                              │
+│  Claude Code   Cursor   Claude Desktop  ...  │
+│       └──────────┴──────────┴──────┘         │
+│                MCP Protocol                  │
+└──────────────────────┬───────────────────────┘
+                       │
+             SSE / Streamable HTTP
+                       │
+┌──────────────────────▼───────────────────────┐
+│          MCP Adapter Layer (this project)     │
+│                                              │
+│  ┌────────────┬──────────────┬────────────┐  │
+│  │  Tool      │   Semantic   │   Auth     │  │
+│  │  Registry  │   Formatter  │ Passthrough│  │
+│  └────────────┴──────────────┴────────────┘  │
+│                                              │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌──────┐  │
+│  │ Stores │ │  Menu  │ │Inventory│ │Promos│  │
+│  │ Tools  │ │ Tools  │ │ Tools  │ │Tools │  │
+│  └────────┘ └────────┘ └────────┘ └──────┘  │
+└──────────────────────┬───────────────────────┘
+                       │
+             HTTPS + HMAC Signing
+                       ▼
+          openapi.starbucks.com.cn
+          (Existing Open Platform)
+    </div>
+  </section>
+
+  <!-- Tools -->
+  <section>
+    <h2>Available Tools</h2>
+    <div class="tools-grid">
+      <div class="tool-card">
+        <div class="tool-name">search_nearby_stores</div>
+        <div class="tool-desc">Search nearby Starbucks stores by city, keyword, or coordinates</div>
+        <div class="tool-example">"Find Starbucks near Lujiazui, Shanghai"</div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-name">get_store_detail</div>
+        <div class="tool-desc">Store details: address, hours, services, contact</div>
+        <div class="tool-example">"What time does this store close?"</div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-name">get_menu</div>
+        <div class="tool-desc">Browse menu by category: espresso, seasonal, tea, food</div>
+        <div class="tool-example">"What new drinks are available this season?"</div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-name">get_product_detail</div>
+        <div class="tool-desc">Product details: sizes, prices, calories, customizations</div>
+        <div class="tool-example">"Can I get oat milk in a Flat White?"</div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-name">check_store_inventory</div>
+        <div class="tool-desc">Check product availability at a specific store</div>
+        <div class="tool-example">"Is the Sakura Latte available today?"</div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-name">get_promotions</div>
+        <div class="tool-desc">Current promotions: BOGO, discounts, member offers</div>
+        <div class="tool-example">"Any buy-one-get-one deals right now?"</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick Start -->
+  <section>
+    <h2>Quick Start</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <h4>Clone &amp; Install</h4>
+          <p>Requires uv and Python 3.13+</p>
+        </div>
+      </div>
+    </div>
+    <div class="code-block">
+<span class="cmd">$</span> git clone https://github.com/alexzhang2015/starbucks-mcp-server.git
+<span class="cmd">$</span> cd starbucks-mcp-server
+<span class="cmd">$</span> uv sync
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <h4>Run the Demo</h4>
+          <p>Execute all 6 tools in sequence</p>
+        </div>
+      </div>
+    </div>
+    <div class="code-block">
+<span class="cmd">$</span> uv run sbux demo
+<span class="comment"># Step 1: Search Shanghai stores</span>
+<span class="comment"># Step 2: Get store detail</span>
+<span class="comment"># Step 3: Browse seasonal menu</span>
+<span class="comment"># Step 4: Product detail (Latte)</span>
+<span class="comment"># Step 5: Check inventory</span>
+<span class="comment"># Step 6: Current promotions</span>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <h4>Connect to Claude Code / Cursor</h4>
+          <p>Add to your MCP config file</p>
+        </div>
+      </div>
+    </div>
+    <div class="code-block">
+<span class="comment">// Claude Code: ~/.claude/claude_code_settings.json</span>
+<span class="comment">// Cursor:      .cursor/mcp.json</span>
+{
+  <span class="string">"mcpServers"</span>: {
+    <span class="string">"starbucks"</span>: {
+      <span class="string">"command"</span>: <span class="string">"uv"</span>,
+      <span class="string">"args"</span>: [<span class="string">"--directory"</span>, <span class="string">"/path/to/starbucks-mcp-server"</span>, <span class="string">"run"</span>, <span class="string">"starbucks-mcp"</span>]
+    }
+  }
+}
+    </div>
+  </section>
+
+  <!-- Scenario -->
+  <section>
+    <h2>Real-World Scenario</h2>
+    <div class="scenario">
+      <div class="user">User:</div>
+      "I have a meeting near Lujiazui, pre-order a grande oat latte with less ice at the nearest Starbucks"
+      <br><br>
+      <div class="agent">AI Agent executes:</div>
+      <br>
+      Step 1: <code>search_nearby_stores(city="Shanghai", keyword="Lujiazui")</code> &rarr; 3 stores found<br>
+      Step 2: <code>get_store_detail(store_id="SH-LJZ-001")</code> &rarr; Open, supports pickup<br>
+      Step 3: <code>check_store_inventory(store_id="SH-LJZ-001", product_id="ESP-002")</code> &rarr; In stock<br>
+      Step 4: <code>get_product_detail(name="Latte")</code> &rarr; Grande ¥37, oat milk +¥5<br>
+      <div class="result">
+        "Bund Raffles City store (8 min walk from Lujiazui), grande oat latte with less ice, order #A042, ready at 14:30."
+      </div>
+    </div>
+  </section>
+
+  <!-- Compatible Clients -->
+  <section>
+    <h2>Compatible MCP Clients</h2>
+    <div class="clients-grid">
+      <div class="client-card">
+        <div class="name">Claude Code CLI</div>
+        <div class="status">Native Support</div>
+      </div>
+      <div class="client-card">
+        <div class="name">Cursor</div>
+        <div class="status">Native Support</div>
+      </div>
+      <div class="client-card">
+        <div class="name">Claude Desktop</div>
+        <div class="status">Native Support</div>
+      </div>
+      <div class="client-card">
+        <div class="name">Cline / Roo Code</div>
+        <div class="status">Native Support</div>
+      </div>
+      <div class="client-card">
+        <div class="name">LangChain Agent</div>
+        <div class="status">Via MCP SDK</div>
+      </div>
+      <div class="client-card">
+        <div class="name">Custom Agent</div>
+        <div class="status">Via MCP SDK</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <p>
+      Starbucks MCP Server &mdash; Open Source Demo |
+      <a href="https://github.com/alexzhang2015/starbucks-mcp-server">GitHub</a> |
+      Built with <a href="https://modelcontextprotocol.io">MCP Protocol</a>
+    </p>
+    <p style="margin-top:8px;">MIT License &copy; 2026</p>
+  </footer>
+
+</body>
+</html>
