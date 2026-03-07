@@ -1,4 +1,4 @@
-"""Starbucks MCP CLI - interactive client for the Starbucks MCP Server."""
+"""Starbucks MCP CLI — interactive client for the Starbucks MCP Server."""
 
 import asyncio
 import json
@@ -15,12 +15,8 @@ from mcp.client.stdio import stdio_client
 
 console = Console()
 
-DEFAULT_API_KEY = "demo-key-001"
-SERVER_CMD = [sys.executable, "-m", "starbucks_mcp.server"]
-
 
 async def _create_session():
-    """Create an MCP client session connected to the starbucks server."""
     server_params = StdioServerParameters(
         command=sys.executable,
         args=["-m", "starbucks_mcp.server"],
@@ -38,7 +34,6 @@ async def _call_tool(session: ClientSession, tool_name: str, arguments: dict) ->
 
 
 async def _run_single(tool_name: str, arguments: dict):
-    """Connect, call one tool, print result, disconnect."""
     async with (await _create_session()) as (read_stream, write_stream):
         async with ClientSession(read_stream, write_stream) as session:
             await session.initialize()
@@ -46,12 +41,11 @@ async def _run_single(tool_name: str, arguments: dict):
             console.print(Markdown(result))
 
 
-async def _interactive(api_key: str):
-    """Interactive REPL mode."""
+async def _interactive():
     console.print(Panel.fit(
-        "[bold green]Starbucks MCP CLI[/bold green]\n"
-        f"API Key: {api_key}\n"
-        "输入命令与星巴克 MCP Server 交互，输入 help 查看可用命令，输入 quit 退出。",
+        "[bold green]Starbucks MCP CLI[/bold green] (B2B Open Platform)\n"
+        "基于真实 openapi.starbucks.com.cn 接口映射\n"
+        "输入 help 查看命令，quit 退出",
         title="sbux",
     ))
 
@@ -59,18 +53,21 @@ async def _interactive(api_key: str):
         async with ClientSession(read_stream, write_stream) as session:
             await session.initialize()
 
-            # List available tools
             tools_result = await session.list_tools()
             tool_names = [t.name for t in tools_result.tools]
-            console.print(f"[dim]已连接，可用 Tools: {', '.join(tool_names)}[/dim]\n")
+            console.print(f"[dim]已连接，可用 Tools ({len(tool_names)}): {', '.join(tool_names)}[/dim]\n")
 
             commands = {
-                "stores": ("search_nearby_stores", "搜索门店 - stores [城市] [关键词]"),
-                "store": ("get_store_detail", "门店详情 - store <门店编号>"),
-                "menu": ("get_menu", "查看菜单 - menu [分类]"),
-                "product": ("get_product_detail", "产品详情 - product <名称或ID>"),
-                "inventory": ("check_store_inventory", "查库存 - inventory <门店编号> [产品ID]"),
-                "promos": ("get_promotions", "促销活动 - promos"),
+                "member": ("member_query", "查询会员 - member <手机号/openId/sbuxId>"),
+                "tier": ("member_tier", "会员等级 - tier <sbuxId>"),
+                "benefits": ("member_benefits", "权益状态 - benefits <sbuxId>"),
+                "coupons": ("member_benefit_list", "券列表 - coupons <sbuxId>"),
+                "coupon-query": ("coupon_query", "订单券码 - coupon-query <orderId>"),
+                "coupon": ("coupon_detail", "券码详情 - coupon <couponCode>"),
+                "equity": ("equity_query", "权益查询 - equity <orderId>"),
+                "equity-detail": ("equity_detail", "权益详情 - equity-detail <orderId>"),
+                "assets": ("assets_list", "客户资产 - assets <sbuxId>"),
+                "pay": ("cashier_pay_query", "支付查询 - pay <payToken>"),
             }
 
             while True:
@@ -93,6 +90,7 @@ async def _interactive(api_key: str):
                     for cmd, (_, desc) in commands.items():
                         table.add_row(cmd, desc)
                     table.add_row("tools", "列出所有 MCP Tools")
+                    table.add_row("data", "查看 Demo 测试数据")
                     table.add_row("help", "显示此帮助")
                     table.add_row("quit", "退出")
                     console.print(table)
@@ -100,8 +98,32 @@ async def _interactive(api_key: str):
 
                 if user_input == "tools":
                     for t in tools_result.tools:
-                        console.print(f"[cyan]{t.name}[/cyan]: {t.description[:80]}")
+                        desc = t.description or ""
+                        first_line = desc.split("\n")[0]
+                        console.print(f"[cyan]{t.name}[/cyan]: {first_line}")
                     console.print()
+                    continue
+
+                if user_input == "data":
+                    console.print(Panel(
+                        "[bold]Demo 测试数据[/bold]\n\n"
+                        "[cyan]会员:[/cyan]\n"
+                        "  SBUX_M_100001 (张三, 金星, 138****1234)\n"
+                        "  SBUX_M_100002 (李四, 银星, 139****5678)\n"
+                        "  SBUX_M_100003 (王五, 钻星, 137****9012)\n\n"
+                        "[cyan]券码:[/cyan]\n"
+                        "  SBX20260301A001 (未使用, 中杯饮品券)\n"
+                        "  SBX20260301A002 (已使用)\n"
+                        "  SBX20260215B001 (买一送一券)\n\n"
+                        "[cyan]订单号:[/cyan]\n"
+                        "  ORD_2026030100001 (春季活动)\n"
+                        "  ORD_2026021500001 (新年活动)\n\n"
+                        "[cyan]权益订单:[/cyan]\n"
+                        "  EQ_2026030100001, EQ_2026030100002, EQ_2026021500001\n\n"
+                        "[cyan]支付令牌:[/cyan]\n"
+                        "  PAY_TOKEN_001 (成功) PAY_TOKEN_002 (处理中) PAY_TOKEN_003 (失败)",
+                        title="Test Data",
+                    ))
                     continue
 
                 parts = user_input.split()
@@ -113,39 +135,40 @@ async def _interactive(api_key: str):
                     continue
 
                 tool_name = commands[cmd][0]
-                arguments: dict = {"api_key": api_key}
+                arguments: dict = {}
 
                 try:
-                    if cmd == "stores":
-                        if args:
-                            arguments["city"] = args[0]
-                        if len(args) > 1:
-                            arguments["keyword"] = args[1]
-                    elif cmd == "store":
+                    if cmd == "member":
                         if not args:
-                            console.print("[red]请提供门店编号，例如: store SH-LJZ-001[/red]")
+                            console.print("[red]请提供手机号/openId/sbuxId[/red]")
                             continue
-                        arguments["store_id"] = args[0]
-                    elif cmd == "menu":
-                        if args:
-                            arguments["category"] = args[0]
-                    elif cmd == "product":
-                        if not args:
-                            console.print("[red]请提供产品名称或ID，例如: product 拿铁[/red]")
-                            continue
-                        value = " ".join(args)
-                        if value.startswith(("ESP-", "CB-", "FRAP-", "TEA-", "SEA-", "FOOD-")):
-                            arguments["product_id"] = value
+                        v = args[0]
+                        if v.startswith("SBUX_"):
+                            arguments["sbux_id"] = v
+                        elif v.startswith("o"):
+                            arguments["open_id"] = v
                         else:
-                            arguments["name"] = value
-                    elif cmd == "inventory":
+                            arguments["mobile"] = v
+                    elif cmd in ("tier", "benefits", "coupons", "assets"):
                         if not args:
-                            console.print("[red]请提供门店编号，例如: inventory SH-LJZ-001[/red]")
+                            console.print(f"[red]请提供 sbuxId，如: {cmd} SBUX_M_100001[/red]")
                             continue
-                        arguments["store_id"] = args[0]
-                        if len(args) > 1:
-                            arguments["product_id"] = args[1]
-                    # promos has no extra args
+                        arguments["sbux_id"] = args[0]
+                    elif cmd in ("coupon-query", "equity", "equity-detail"):
+                        if not args:
+                            console.print(f"[red]请提供订单号[/red]")
+                            continue
+                        arguments["order_id"] = args[0]
+                    elif cmd == "coupon":
+                        if not args:
+                            console.print("[red]请提供券码，如: coupon SBX20260301A001[/red]")
+                            continue
+                        arguments["coupon_code"] = args[0]
+                    elif cmd == "pay":
+                        if not args:
+                            console.print("[red]请提供 payToken，如: pay PAY_TOKEN_001[/red]")
+                            continue
+                        arguments["pay_token"] = args[0]
 
                     result = await _call_tool(session, tool_name, arguments)
                     console.print()
@@ -155,11 +178,10 @@ async def _interactive(api_key: str):
                     console.print(f"[red]错误: {e}[/red]")
 
 
-async def _demo(api_key: str):
-    """Run a scripted demo showing all tools."""
+async def _demo():
     console.print(Panel.fit(
         "[bold green]Starbucks MCP Server Demo[/bold green]\n"
-        "模拟完整的门店查询 → 菜单浏览 → 产品详情 → 库存检查流程",
+        "模拟 B2B 场景：会员查询 → 等级 → 权益 → 券码 → 资产 → 支付",
         title="Demo",
     ))
 
@@ -168,105 +190,110 @@ async def _demo(api_key: str):
             await session.initialize()
 
             steps = [
-                ("search_nearby_stores", {"api_key": api_key, "city": "上海"}, "Step 1: 搜索上海的星巴克门店"),
-                ("get_store_detail", {"api_key": api_key, "store_id": "SH-LJZ-001"}, "Step 2: 查看陆家嘴门店详情"),
-                ("get_menu", {"api_key": api_key, "category": "seasonal"}, "Step 3: 浏览当季限定菜单"),
-                ("get_product_detail", {"api_key": api_key, "name": "拿铁"}, "Step 4: 查看拿铁的详细信息"),
-                ("check_store_inventory", {"api_key": api_key, "store_id": "SH-LJZ-001"}, "Step 5: 查询陆家嘴店库存"),
-                ("get_promotions", {"api_key": api_key}, "Step 6: 查看当前促销活动"),
+                ("member_query", {"mobile": "138****1234"},
+                 "Step 1: 查询会员 (POST /crmadapter/account/query)"),
+                ("member_tier", {"sbux_id": "SBUX_M_100001"},
+                 "Step 2: 查询等级详情 (POST /crmadapter/account/memberTier)"),
+                ("member_benefits", {"sbux_id": "SBUX_M_100001"},
+                 "Step 3: 查询 8 项权益状态 (POST /crmadapter/customers/getBenefits)"),
+                ("member_benefit_list", {"sbux_id": "SBUX_M_100001"},
+                 "Step 4: 查询券列表 (POST /crmadapter/asset/coupon/getBenefitList)"),
+                ("coupon_query", {"order_id": "ORD_2026030100001"},
+                 "Step 5: 查询订单券码 (POST /coupon/query)"),
+                ("coupon_detail", {"coupon_code": "SBX20260301A001"},
+                 "Step 6: 查询券码详情 (POST /coupon/detail)"),
+                ("equity_detail", {"order_id": "EQ_2026030100001"},
+                 "Step 7: 查询权益详情 (POST /equity/detail)"),
+                ("assets_list", {"sbux_id": "SBUX_M_100001"},
+                 "Step 8: 查询客户全部资产 (POST /assets/list)"),
+                ("cashier_pay_query", {"pay_token": "PAY_TOKEN_001"},
+                 "Step 9: 查询支付状态 (POST /cashier/payQuery)"),
             ]
 
             for tool_name, arguments, description in steps:
                 console.print(f"\n[bold yellow]{'='*60}[/bold yellow]")
                 console.print(f"[bold]{description}[/bold]")
-                console.print(f"[dim]Tool: {tool_name}({json.dumps({k:v for k,v in arguments.items() if k != 'api_key'}, ensure_ascii=False)})[/dim]")
+                console.print(f"[dim]Tool: {tool_name}({json.dumps(arguments, ensure_ascii=False)})[/dim]")
                 console.print(f"[bold yellow]{'='*60}[/bold yellow]\n")
 
                 result = await _call_tool(session, tool_name, arguments)
                 console.print(Markdown(result))
                 console.print()
 
-    console.print("[bold green]Demo 完成！[/bold green]")
+    console.print("[bold green]Demo 完成！所有 Phase 1 只读 Tool 均已验证。[/bold green]")
 
 
 @click.group()
 def cli():
-    """Starbucks MCP CLI - 星巴克 MCP 服务客户端"""
+    """Starbucks MCP CLI — 星巴克 B2B 开放平台 MCP 客户端"""
     pass
 
 
 @cli.command()
-@click.option("--key", default=DEFAULT_API_KEY, help="API Key (default: demo-key-001)")
-def interactive(key):
+def interactive():
     """启动交互式命令行"""
-    asyncio.run(_interactive(key))
+    asyncio.run(_interactive())
 
 
 @cli.command()
-@click.option("--key", default=DEFAULT_API_KEY, help="API Key")
-def demo(key):
-    """运行完整 Demo 流程"""
-    asyncio.run(_demo(key))
+def demo():
+    """运行完整 Demo 流程（9 步）"""
+    asyncio.run(_demo())
 
 
 @cli.command()
-@click.argument("city", required=False)
-@click.argument("keyword", required=False)
-@click.option("--key", default=DEFAULT_API_KEY, help="API Key")
-def stores(city, keyword, key):
-    """搜索门店"""
-    args = {"api_key": key}
-    if city:
-        args["city"] = city
-    if keyword:
-        args["keyword"] = keyword
-    asyncio.run(_run_single("search_nearby_stores", args))
+@click.argument("identifier")
+def member(identifier):
+    """查询会员信息（手机号/openId/sbuxId）"""
+    if identifier.startswith("SBUX_"):
+        args = {"sbux_id": identifier}
+    elif identifier.startswith("o"):
+        args = {"open_id": identifier}
+    else:
+        args = {"mobile": identifier}
+    asyncio.run(_run_single("member_query", args))
 
 
 @cli.command()
-@click.argument("store_id")
-@click.option("--key", default=DEFAULT_API_KEY, help="API Key")
-def store(store_id, key):
-    """查看门店详情"""
-    asyncio.run(_run_single("get_store_detail", {"api_key": key, "store_id": store_id}))
+@click.argument("sbux_id")
+def tier(sbux_id):
+    """查询会员等级"""
+    asyncio.run(_run_single("member_tier", {"sbux_id": sbux_id}))
 
 
 @cli.command()
-@click.argument("category", required=False)
-@click.option("--key", default=DEFAULT_API_KEY, help="API Key")
-def menu(category, key):
-    """查看菜单"""
-    args = {"api_key": key}
-    if category:
-        args["category"] = category
-    asyncio.run(_run_single("get_menu", args))
+@click.argument("sbux_id")
+def benefits(sbux_id):
+    """查询会员权益状态"""
+    asyncio.run(_run_single("member_benefits", {"sbux_id": sbux_id}))
 
 
 @cli.command()
-@click.argument("name")
-@click.option("--key", default=DEFAULT_API_KEY, help="API Key")
-def product(name, key):
-    """查看产品详情"""
-    asyncio.run(_run_single("get_product_detail", {"api_key": key, "name": name}))
+@click.argument("sbux_id")
+def assets(sbux_id):
+    """查询客户资产"""
+    asyncio.run(_run_single("assets_list", {"sbux_id": sbux_id}))
 
 
 @cli.command()
-@click.argument("store_id")
-@click.argument("product_id", required=False)
-@click.option("--key", default=DEFAULT_API_KEY, help="API Key")
-def inventory(store_id, product_id, key):
-    """查询门店库存"""
-    args = {"api_key": key, "store_id": store_id}
-    if product_id:
-        args["product_id"] = product_id
-    asyncio.run(_run_single("check_store_inventory", args))
+@click.argument("coupon_code")
+def coupon(coupon_code):
+    """查询券码详情"""
+    asyncio.run(_run_single("coupon_detail", {"coupon_code": coupon_code}))
 
 
 @cli.command()
-@click.option("--key", default=DEFAULT_API_KEY, help="API Key")
-def promos(key):
-    """查看促销活动"""
-    asyncio.run(_run_single("get_promotions", {"api_key": key}))
+@click.argument("order_id")
+def equity(order_id):
+    """查询权益详情"""
+    asyncio.run(_run_single("equity_detail", {"order_id": order_id}))
+
+
+@cli.command()
+@click.argument("pay_token")
+def pay(pay_token):
+    """查询支付状态"""
+    asyncio.run(_run_single("cashier_pay_query", {"pay_token": pay_token}))
 
 
 if __name__ == "__main__":

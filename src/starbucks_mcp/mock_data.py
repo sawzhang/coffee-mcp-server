@@ -1,464 +1,397 @@
-"""Mock data simulating Starbucks Open Platform API responses."""
+"""Mock data simulating Starbucks B2B Open Platform (openapi.starbucks.com.cn) responses.
 
-import math
-import random
+All data structures mirror the real HTTP API response schemas.
+In production, these functions are replaced by actual HTTP calls to the backend
+(internal network, behind Kong).
+"""
 
-STORES = [
-    {
-        "store_id": "SH-LJZ-001",
-        "name": "星巴克(陆家嘴中心店)",
-        "city": "上海",
-        "district": "浦东新区",
-        "address": "陆家嘴环路1000号恒生银行大厦1层",
-        "latitude": 31.2397,
-        "longitude": 121.4998,
-        "open_time": "07:00",
-        "close_time": "22:00",
-        "has_seating": True,
-        "drivethru": False,
-        "delivery": True,
-        "mobile_order": True,
-        "phone": "021-50471234",
-    },
-    {
-        "store_id": "SH-LFS-002",
-        "name": "星巴克(来福士广场店)",
-        "city": "上海",
-        "district": "黄浦区",
-        "address": "西藏中路268号来福士广场1层",
-        "latitude": 31.2322,
-        "longitude": 121.4737,
-        "open_time": "07:30",
-        "close_time": "22:30",
-        "has_seating": True,
-        "drivethru": False,
-        "delivery": True,
-        "mobile_order": True,
-        "phone": "021-63401234",
-    },
-    {
-        "store_id": "SH-JAT-003",
-        "name": "星巴克(静安寺店)",
-        "city": "上海",
-        "district": "静安区",
-        "address": "南京西路1788号久光百货B1层",
-        "latitude": 31.2248,
-        "longitude": 121.4448,
-        "open_time": "08:00",
-        "close_time": "22:00",
-        "has_seating": True,
-        "drivethru": False,
-        "delivery": True,
-        "mobile_order": True,
-        "phone": "021-62881234",
-    },
-    {
-        "store_id": "BJ-GML-001",
-        "name": "星巴克(国贸商城店)",
-        "city": "北京",
-        "district": "朝阳区",
-        "address": "建国门外大街1号国贸商城B1层",
-        "latitude": 39.9087,
-        "longitude": 116.4594,
-        "open_time": "07:00",
-        "close_time": "22:00",
-        "has_seating": True,
-        "drivethru": False,
-        "delivery": True,
-        "mobile_order": True,
-        "phone": "010-65051234",
-    },
-    {
-        "store_id": "BJ-SLT-002",
-        "name": "星巴克(三里屯太古里店)",
-        "city": "北京",
-        "district": "朝阳区",
-        "address": "三里屯路19号三里屯太古里南区1层",
-        "latitude": 39.9340,
-        "longitude": 116.4537,
-        "open_time": "07:30",
-        "close_time": "23:00",
-        "has_seating": True,
-        "drivethru": False,
-        "delivery": True,
-        "mobile_order": True,
-        "phone": "010-64171234",
-    },
-    {
-        "store_id": "GZ-TH-001",
-        "name": "星巴克(天河城店)",
-        "city": "广州",
-        "district": "天河区",
-        "address": "天河路208号天河城B1层",
-        "latitude": 23.1317,
-        "longitude": 113.3290,
-        "open_time": "08:00",
-        "close_time": "22:00",
-        "has_seating": True,
-        "drivethru": False,
-        "delivery": True,
-        "mobile_order": True,
-        "phone": "020-85501234",
-    },
-    {
-        "store_id": "SZ-FT-001",
-        "name": "星巴克(福田COCO Park店)",
-        "city": "深圳",
-        "district": "福田区",
-        "address": "福华三路与金田路交汇处COCO Park 1层",
-        "latitude": 22.5332,
-        "longitude": 114.0546,
-        "open_time": "07:30",
-        "close_time": "22:30",
-        "has_seating": True,
-        "drivethru": False,
-        "delivery": True,
-        "mobile_order": True,
-        "phone": "0755-83201234",
-    },
-    {
-        "store_id": "HZ-XH-001",
-        "name": "星巴克(西湖银泰店)",
-        "city": "杭州",
-        "district": "上城区",
-        "address": "延安路98号银泰百货1层",
-        "latitude": 30.2592,
-        "longitude": 120.1690,
-        "open_time": "07:30",
-        "close_time": "22:00",
-        "has_seating": True,
-        "drivethru": False,
-        "delivery": True,
-        "mobile_order": True,
-        "phone": "0571-87801234",
-    },
-]
+# ---------------------------------------------------------------------------
+# B2B Partners (Kong Consumers)
+# ---------------------------------------------------------------------------
 
-MENU_CATEGORIES = {
-    "espresso": "浓缩咖啡饮品",
-    "cold_brew": "冷萃咖啡",
-    "frappuccino": "星冰乐",
-    "tea": "茶饮",
-    "seasonal": "当季限定",
-    "food": "轻食糕点",
+CONSUMERS = {
+    "nio": {
+        "username": "nio",
+        "custom_id": "NIO_PARTNER_001",
+        "groups": ["member-read", "coupon-read", "assets-read", "cashier-read"],
+        "display_name": "蔚来汽车",
+    },
+    "qwen": {
+        "username": "qwen",
+        "custom_id": "QWEN_ENT_001",
+        "groups": ["member-read", "member-write", "coupon-read", "coupon-write",
+                   "equity-read", "equity-write", "assets-read"],
+        "display_name": "通义千问(企业版)",
+    },
+    "fliggy": {
+        "username": "fliggy",
+        "custom_id": "FLIGGY_3PP",
+        "groups": ["member-read", "member-write", "equity-read", "equity-write",
+                   "benefit-write", "assets-read"],
+        "display_name": "飞猪旅行",
+    },
+    "demo": {
+        "username": "demo",
+        "custom_id": "DEMO_001",
+        "groups": ["member-read", "coupon-read", "equity-read", "assets-read",
+                   "cashier-read"],
+        "display_name": "Demo Partner",
+    },
 }
 
-PRODUCTS = [
+# ---------------------------------------------------------------------------
+# Members (会员服务 2.0)
+# ---------------------------------------------------------------------------
+
+MEMBERS = [
     {
-        "product_id": "ESP-001",
-        "name": "馥芮白",
-        "name_en": "Flat White",
-        "category": "espresso",
-        "description": "以 Ristretto 浓缩为基底，融合绵密的蒸奶，口感顺滑醇厚",
-        "sizes": {
-            "tall": {"name": "中杯", "price": 36.0},
-            "grande": {"name": "大杯", "price": 40.0},
-            "venti": {"name": "超大杯", "price": 44.0},
-        },
-        "customizations": {
-            "milk": ["全脂奶", "脱脂奶", "燕麦奶(+5元)", "椰奶(+5元)", "杏仁奶(+5元)"],
-            "temperature": ["热", "冰", "温"],
-            "sweetness": ["标准", "少糖", "半糖", "无糖"],
-            "extra_shot": True,
-        },
-        "calories": {"tall": 120, "grande": 170, "venti": 220},
-        "is_new": False,
-        "is_seasonal": False,
+        "sbux_id": "SBUX_M_100001",
+        "open_id": "oABC123456789",
+        "mobile": "138****1234",
+        "name": "张三",
+        "channel": "NIO",
+        "member_tier": "GOLD",
+        "star_balance": 142,
+        "tier_expire_date": "2026-12-31",
+        "registration_date": "2024-06-15",
+        "birthday": "1990-03-15",
+        "gender": "M",
     },
     {
-        "product_id": "ESP-002",
-        "name": "拿铁",
-        "name_en": "Caffè Latte",
-        "category": "espresso",
-        "description": "浓缩咖啡与蒸奶的经典搭配，温润柔和",
-        "sizes": {
-            "tall": {"name": "中杯", "price": 33.0},
-            "grande": {"name": "大杯", "price": 37.0},
-            "venti": {"name": "超大杯", "price": 41.0},
-        },
-        "customizations": {
-            "milk": ["全脂奶", "脱脂奶", "燕麦奶(+5元)", "椰奶(+5元)", "杏仁奶(+5元)"],
-            "temperature": ["热", "冰", "温"],
-            "sweetness": ["标准", "少糖", "半糖", "无糖"],
-            "extra_shot": True,
-        },
-        "calories": {"tall": 150, "grande": 190, "venti": 250},
-        "is_new": False,
-        "is_seasonal": False,
+        "sbux_id": "SBUX_M_100002",
+        "open_id": "oDEF987654321",
+        "mobile": "139****5678",
+        "name": "李四",
+        "channel": "FLIGGY",
+        "member_tier": "GREEN",
+        "star_balance": 28,
+        "tier_expire_date": "2026-09-30",
+        "registration_date": "2025-11-20",
+        "birthday": "1995-08-22",
+        "gender": "F",
     },
     {
-        "product_id": "ESP-003",
-        "name": "美式咖啡",
-        "name_en": "Caffè Americano",
-        "category": "espresso",
-        "description": "浓缩咖啡加水，简单纯粹的咖啡风味",
-        "sizes": {
-            "tall": {"name": "中杯", "price": 28.0},
-            "grande": {"name": "大杯", "price": 32.0},
-            "venti": {"name": "超大杯", "price": 36.0},
-        },
-        "customizations": {
-            "milk": [],
-            "temperature": ["热", "冰"],
-            "sweetness": ["标准", "无糖"],
-            "extra_shot": True,
-        },
-        "calories": {"tall": 10, "grande": 15, "venti": 20},
-        "is_new": False,
-        "is_seasonal": False,
-    },
-    {
-        "product_id": "ESP-004",
-        "name": "焦糖玛奇朵",
-        "name_en": "Caramel Macchiato",
-        "category": "espresso",
-        "description": "香草风味糖浆、蒸奶，淋上浓缩咖啡与焦糖酱",
-        "sizes": {
-            "tall": {"name": "中杯", "price": 36.0},
-            "grande": {"name": "大杯", "price": 40.0},
-            "venti": {"name": "超大杯", "price": 44.0},
-        },
-        "customizations": {
-            "milk": ["全脂奶", "脱脂奶", "燕麦奶(+5元)", "椰奶(+5元)"],
-            "temperature": ["热", "冰"],
-            "sweetness": ["标准", "少糖", "半糖"],
-            "extra_shot": True,
-        },
-        "calories": {"tall": 190, "grande": 250, "venti": 310},
-        "is_new": False,
-        "is_seasonal": False,
-    },
-    {
-        "product_id": "CB-001",
-        "name": "冷萃咖啡",
-        "name_en": "Cold Brew",
-        "category": "cold_brew",
-        "description": "精选咖啡豆经低温长时间萃取，口感柔顺低酸",
-        "sizes": {
-            "tall": {"name": "中杯", "price": 34.0},
-            "grande": {"name": "大杯", "price": 38.0},
-            "venti": {"name": "超大杯", "price": 42.0},
-        },
-        "customizations": {
-            "milk": ["全脂奶", "燕麦奶(+5元)"],
-            "temperature": ["冰"],
-            "sweetness": ["标准", "无糖"],
-            "extra_shot": False,
-        },
-        "calories": {"tall": 5, "grande": 5, "venti": 10},
-        "is_new": False,
-        "is_seasonal": False,
-    },
-    {
-        "product_id": "FRAP-001",
-        "name": "摩卡星冰乐",
-        "name_en": "Mocha Frappuccino",
-        "category": "frappuccino",
-        "description": "浓缩咖啡、摩卡酱与牛奶冰沙的完美融合",
-        "sizes": {
-            "tall": {"name": "中杯", "price": 37.0},
-            "grande": {"name": "大杯", "price": 41.0},
-            "venti": {"name": "超大杯", "price": 45.0},
-        },
-        "customizations": {
-            "milk": ["全脂奶", "脱脂奶", "燕麦奶(+5元)"],
-            "temperature": ["冰"],
-            "sweetness": ["标准", "少糖"],
-            "extra_shot": True,
-        },
-        "calories": {"tall": 280, "grande": 370, "venti": 460},
-        "is_new": False,
-        "is_seasonal": False,
-    },
-    {
-        "product_id": "TEA-001",
-        "name": "抹茶拿铁",
-        "name_en": "Matcha Latte",
-        "category": "tea",
-        "description": "日式抹茶与蒸奶的细腻结合，茶香浓郁",
-        "sizes": {
-            "tall": {"name": "中杯", "price": 35.0},
-            "grande": {"name": "大杯", "price": 39.0},
-            "venti": {"name": "超大杯", "price": 43.0},
-        },
-        "customizations": {
-            "milk": ["全脂奶", "脱脂奶", "燕麦奶(+5元)", "椰奶(+5元)"],
-            "temperature": ["热", "冰"],
-            "sweetness": ["标准", "少糖", "半糖", "无糖"],
-            "extra_shot": False,
-        },
-        "calories": {"tall": 190, "grande": 240, "venti": 320},
-        "is_new": False,
-        "is_seasonal": False,
-    },
-    {
-        "product_id": "SEA-001",
-        "name": "樱花初绽拿铁",
-        "name_en": "Sakura Blossom Latte",
-        "category": "seasonal",
-        "description": "2026春季限定 | 樱花风味糖浆与蒸奶的浪漫邂逅，入口花香清甜",
-        "sizes": {
-            "tall": {"name": "中杯", "price": 39.0},
-            "grande": {"name": "大杯", "price": 43.0},
-            "venti": {"name": "超大杯", "price": 47.0},
-        },
-        "customizations": {
-            "milk": ["全脂奶", "燕麦奶(+5元)", "椰奶(+5元)"],
-            "temperature": ["热", "冰"],
-            "sweetness": ["标准", "少糖"],
-            "extra_shot": True,
-        },
-        "calories": {"tall": 210, "grande": 270, "venti": 350},
-        "is_new": True,
-        "is_seasonal": True,
-    },
-    {
-        "product_id": "SEA-002",
-        "name": "生椰拿铁",
-        "name_en": "Coconut Latte",
-        "category": "seasonal",
-        "description": "2026春季限定 | 椰浆与浓缩咖啡的热带风情，清爽回甘",
-        "sizes": {
-            "tall": {"name": "中杯", "price": 38.0},
-            "grande": {"name": "大杯", "price": 42.0},
-            "venti": {"name": "超大杯", "price": 46.0},
-        },
-        "customizations": {
-            "milk": [],
-            "temperature": ["热", "冰"],
-            "sweetness": ["标准", "少糖", "无糖"],
-            "extra_shot": True,
-        },
-        "calories": {"tall": 180, "grande": 230, "venti": 300},
-        "is_new": True,
-        "is_seasonal": True,
-    },
-    {
-        "product_id": "FOOD-001",
-        "name": "芝士牛肉可颂",
-        "name_en": "Cheese Beef Croissant",
-        "category": "food",
-        "description": "酥脆可颂搭配芝士与牛肉，香气四溢",
-        "sizes": {
-            "single": {"name": "单份", "price": 28.0},
-        },
-        "customizations": {"milk": [], "temperature": ["加热", "常温"], "sweetness": [], "extra_shot": False},
-        "calories": {"single": 380},
-        "is_new": False,
-        "is_seasonal": False,
+        "sbux_id": "SBUX_M_100003",
+        "open_id": "oGHI456789012",
+        "mobile": "137****9012",
+        "name": "王五",
+        "channel": "QWEN",
+        "member_tier": "DIAMOND",
+        "star_balance": 520,
+        "tier_expire_date": "2027-03-31",
+        "registration_date": "2023-01-10",
+        "birthday": "1988-12-01",
+        "gender": "M",
     },
 ]
 
-PROMOTIONS = [
+TIER_THRESHOLDS = {"GREEN": 0, "GOLD": 125, "DIAMOND": 500}
+TIER_NAMES = {"GREEN": "银星级", "GOLD": "金星级", "DIAMOND": "钻星级"}
+
+MEMBER_BENEFITS = {
+    "SBUX_M_100001": {
+        "welcome_coupon": 3,       # 3=grayed (已领取)
+        "birthday_reward": 2,      # 2=active (可领取)
+        "tier_upgrade_reward": 3,
+        "free_drink_coupon": 2,
+        "food_coupon": 1,          # 1=locked (未解锁)
+        "customization_coupon": 2,
+        "refill_benefit": 2,
+        "early_access": 2,
+    },
+    "SBUX_M_100002": {
+        "welcome_coupon": 2,
+        "birthday_reward": 1,
+        "tier_upgrade_reward": 1,
+        "free_drink_coupon": 1,
+        "food_coupon": 1,
+        "customization_coupon": 1,
+        "refill_benefit": 1,
+        "early_access": 1,
+    },
+    "SBUX_M_100003": {
+        "welcome_coupon": 3,
+        "birthday_reward": 2,
+        "tier_upgrade_reward": 3,
+        "free_drink_coupon": 2,
+        "food_coupon": 2,
+        "customization_coupon": 2,
+        "refill_benefit": 2,
+        "early_access": 2,
+    },
+}
+
+BENEFIT_STATUS_NAMES = {0: "隐藏", 1: "未解锁", 2: "可使用", 3: "已使用/已过期"}
+BENEFIT_NAMES = {
+    "welcome_coupon": "新人礼券",
+    "birthday_reward": "生日奖励",
+    "tier_upgrade_reward": "升级奖励",
+    "free_drink_coupon": "免费饮品券",
+    "food_coupon": "食品优惠券",
+    "customization_coupon": "定制优惠券",
+    "refill_benefit": "续杯权益",
+    "early_access": "新品优先体验",
+}
+
+# ---------------------------------------------------------------------------
+# Coupons (券码服务)
+# ---------------------------------------------------------------------------
+
+COUPONS = [
     {
-        "promo_id": "P2026-SPRING-001",
-        "title": "樱花季买一送一",
-        "description": "每周三14:00-17:00，购买任意春季限定饮品即享买一送一",
-        "valid_from": "2026-03-01",
-        "valid_to": "2026-04-15",
-        "applicable_products": ["SEA-001", "SEA-002"],
-        "conditions": "限堂食和自取，不与其他优惠叠加",
+        "coupon_code": "SBX20260301A001",
+        "coupon_no": "CN_100001_001",
+        "order_id": "ORD_2026030100001",
+        "campaign_id": "CAMP_SPRING_2026",
+        "status": 4,   # 4=未使用
+        "status_name": "未使用",
+        "product_name": "中杯饮品券",
+        "valid_start": "2026-03-01 00:00:00",
+        "valid_end": "2026-04-30 23:59:59",
+        "redeem_times": 0,
+        "max_redeem_times": 1,
+        "face_value": 35.0,
+        "member_id": "SBUX_M_100001",
     },
     {
-        "promo_id": "P2026-SPRING-002",
-        "title": "早安咖啡半价",
-        "description": "工作日7:00-9:00，任意中杯浓缩咖啡饮品半价",
-        "valid_from": "2026-03-01",
-        "valid_to": "2026-03-31",
-        "applicable_products": ["ESP-001", "ESP-002", "ESP-003", "ESP-004"],
-        "conditions": "仅限中杯，需出示星享俱乐部会员码",
+        "coupon_code": "SBX20260301A002",
+        "coupon_no": "CN_100001_002",
+        "order_id": "ORD_2026030100001",
+        "campaign_id": "CAMP_SPRING_2026",
+        "status": 10,  # 10=已使用
+        "status_name": "已使用",
+        "product_name": "中杯饮品券",
+        "valid_start": "2026-03-01 00:00:00",
+        "valid_end": "2026-04-30 23:59:59",
+        "redeem_times": 1,
+        "max_redeem_times": 1,
+        "face_value": 35.0,
+        "member_id": "SBUX_M_100001",
     },
     {
-        "promo_id": "P2026-SPRING-003",
-        "title": "新会员首杯免费",
-        "description": "新注册星享俱乐部会员，首杯中杯饮品免费",
-        "valid_from": "2026-01-01",
-        "valid_to": "2026-12-31",
-        "applicable_products": [],
-        "conditions": "仅限中杯，每位新会员限享一次",
+        "coupon_code": "SBX20260215B001",
+        "coupon_no": "CN_100002_001",
+        "order_id": "ORD_2026021500001",
+        "campaign_id": "CAMP_CNY_2026",
+        "status": 4,
+        "status_name": "未使用",
+        "product_name": "买一送一券",
+        "valid_start": "2026-02-15 00:00:00",
+        "valid_end": "2026-03-31 23:59:59",
+        "redeem_times": 0,
+        "max_redeem_times": 1,
+        "face_value": 0.0,
+        "member_id": "SBUX_M_100002",
+    },
+    {
+        "coupon_code": "SBX20260101C001",
+        "coupon_no": "CN_100003_001",
+        "order_id": "ORD_2026010100001",
+        "campaign_id": "CAMP_VIP_2026",
+        "status": 4,
+        "status_name": "未使用",
+        "product_name": "大杯饮品免费券",
+        "valid_start": "2026-01-01 00:00:00",
+        "valid_end": "2026-06-30 23:59:59",
+        "redeem_times": 0,
+        "max_redeem_times": 3,
+        "face_value": 40.0,
+        "member_id": "SBUX_M_100003",
     },
 ]
 
-# Valid demo API keys
-VALID_API_KEYS = {"demo-key-001", "sbux-test-2026", "starbucks-dev"}
+COUPON_STATUS_NAMES = {
+    4: "未使用", 10: "已使用", 20: "已过期", 30: "已作废",
+}
+
+# ---------------------------------------------------------------------------
+# Equity / Benefits (权益服务)
+# ---------------------------------------------------------------------------
+
+EQUITIES = [
+    {
+        "order_id": "EQ_2026030100001",
+        "campaign_id": "CAMP_SPRING_2026",
+        "coupon_code": "SBX20260301A001",
+        "coupon_no_with_enc": "ENC_CN_100001_001_xxxxx",
+        "status_code": 100,
+        "status_name": "发放成功",
+        "valid_start": "2026-03-01 00:00:00",
+        "valid_end": "2026-04-30 23:59:59",
+        "binding_time": "2026-03-01 10:30:00",
+        "redeem_times": 0,
+        "total_amount": 35.0,
+        "member_id": "SBUX_M_100001",
+    },
+    {
+        "order_id": "EQ_2026030100002",
+        "campaign_id": "CAMP_SPRING_2026",
+        "coupon_code": "SBX20260301A002",
+        "coupon_no_with_enc": "ENC_CN_100001_002_xxxxx",
+        "status_code": 100,
+        "status_name": "发放成功",
+        "valid_start": "2026-03-01 00:00:00",
+        "valid_end": "2026-04-30 23:59:59",
+        "binding_time": "2026-03-01 10:30:05",
+        "redeem_times": 1,
+        "total_amount": 35.0,
+        "member_id": "SBUX_M_100001",
+    },
+    {
+        "order_id": "EQ_2026021500001",
+        "campaign_id": "CAMP_CNY_2026",
+        "coupon_code": "SBX20260215B001",
+        "coupon_no_with_enc": "ENC_CN_100002_001_xxxxx",
+        "status_code": 100,
+        "status_name": "发放成功",
+        "valid_start": "2026-02-15 00:00:00",
+        "valid_end": "2026-03-31 23:59:59",
+        "binding_time": "2026-02-15 14:00:00",
+        "redeem_times": 0,
+        "total_amount": 0.0,
+        "member_id": "SBUX_M_100002",
+    },
+]
+
+EQUITY_STATUS_NAMES = {
+    100: "发放成功", 104: "发放失败",
+}
+
+# ---------------------------------------------------------------------------
+# Customer Assets (客户资产)
+# ---------------------------------------------------------------------------
+
+ASSETS = {
+    "SBUX_M_100001": {
+        "upp_coupons": [
+            {"coupon_no": "CN_100001_001", "name": "中杯饮品券", "status": "未使用",
+             "valid_end": "2026-04-30", "face_value": 35.0},
+        ],
+        "benefit_coupons": [
+            {"coupon_no": "BEN_100001_001", "name": "生日免费饮品", "status": "可使用",
+             "valid_end": "2026-03-31", "face_value": 0.0},
+            {"coupon_no": "BEN_100001_002", "name": "好友邀请奖励", "status": "可使用",
+             "valid_end": "2026-12-31", "face_value": 30.0},
+        ],
+    },
+    "SBUX_M_100002": {
+        "upp_coupons": [
+            {"coupon_no": "CN_100002_001", "name": "买一送一券", "status": "未使用",
+             "valid_end": "2026-03-31", "face_value": 0.0},
+        ],
+        "benefit_coupons": [],
+    },
+    "SBUX_M_100003": {
+        "upp_coupons": [
+            {"coupon_no": "CN_100003_001", "name": "大杯饮品免费券", "status": "未使用",
+             "valid_end": "2026-06-30", "face_value": 40.0},
+        ],
+        "benefit_coupons": [
+            {"coupon_no": "BEN_100003_001", "name": "钻星专属定制券", "status": "可使用",
+             "valid_end": "2026-12-31", "face_value": 0.0},
+            {"coupon_no": "BEN_100003_002", "name": "续杯半价券", "status": "可使用",
+             "valid_end": "2026-06-30", "face_value": 20.0},
+            {"coupon_no": "BEN_100003_003", "name": "免费升杯券", "status": "已使用",
+             "valid_end": "2026-03-31", "face_value": 0.0},
+        ],
+    },
+}
+
+# ---------------------------------------------------------------------------
+# Payment status (收银台)
+# ---------------------------------------------------------------------------
+
+PAYMENTS = {
+    "PAY_TOKEN_001": {"status": 1, "state_msg": "支付成功", "amount": 37.0,
+                      "order_id": "CASH_2026030700001", "method": "微信支付"},
+    "PAY_TOKEN_002": {"status": 0, "state_msg": "支付中", "amount": 42.0,
+                      "order_id": "CASH_2026030700002", "method": "支付宝"},
+    "PAY_TOKEN_003": {"status": 2, "state_msg": "支付失败", "amount": 35.0,
+                      "order_id": "CASH_2026030700003", "method": "微信支付"},
+}
+
+PAYMENT_STATUS_NAMES = {0: "支付中", 1: "支付成功", 2: "支付失败"}
 
 
-def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Calculate distance between two points in meters."""
-    R = 6371000
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
-    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+# ---------------------------------------------------------------------------
+# Query functions (simulating backend HTTP calls)
+# ---------------------------------------------------------------------------
+
+def get_consumer(username: str) -> dict | None:
+    return CONSUMERS.get(username)
 
 
-def search_stores(
-    city: str | None = None,
-    keyword: str | None = None,
-    latitude: float | None = None,
-    longitude: float | None = None,
-    radius: float = 3000,
-) -> list[dict]:
-    results = []
-    for store in STORES:
-        if city and city not in store["city"]:
-            continue
-        if keyword and keyword not in store["name"] and keyword not in store["address"] and keyword not in store["district"]:
-            continue
-        s = dict(store)
-        if latitude is not None and longitude is not None:
-            s["distance"] = round(haversine_distance(latitude, longitude, store["latitude"], store["longitude"]))
-            if s["distance"] > radius:
-                continue
-        else:
-            s["distance"] = random.randint(200, 2500)
-        results.append(s)
-    results.sort(key=lambda x: x["distance"])
-    return results
-
-
-def get_store(store_id: str) -> dict | None:
-    for store in STORES:
-        if store["store_id"] == store_id:
-            return store
+def member_query(mobile: str | None = None, open_id: str | None = None,
+                 sbux_id: str | None = None) -> dict | None:
+    for m in MEMBERS:
+        if mobile and mobile in m["mobile"]:
+            return m
+        if open_id and m["open_id"] == open_id:
+            return m
+        if sbux_id and m["sbux_id"] == sbux_id:
+            return m
     return None
 
 
-def get_menu(category: str | None = None) -> list[dict]:
-    if category:
-        return [p for p in PRODUCTS if p["category"] == category]
-    return PRODUCTS
+def member_tier(sbux_id: str) -> dict | None:
+    m = member_query(sbux_id=sbux_id)
+    if not m:
+        return None
+    current = m["member_tier"]
+    tiers = list(TIER_THRESHOLDS.keys())
+    idx = tiers.index(current)
+    next_tier = tiers[idx + 1] if idx + 1 < len(tiers) else None
+    stars_to_next = (TIER_THRESHOLDS[next_tier] - m["star_balance"]) if next_tier else 0
+    return {
+        "member_tier": current,
+        "tier_name": TIER_NAMES[current],
+        "star_balance": m["star_balance"],
+        "tier_expire_date": m["tier_expire_date"],
+        "next_tier": next_tier,
+        "next_tier_name": TIER_NAMES.get(next_tier, ""),
+        "stars_to_next": max(0, stars_to_next),
+    }
 
 
-def get_product(product_id: str | None = None, name: str | None = None) -> dict | None:
-    for p in PRODUCTS:
-        if product_id and p["product_id"] == product_id:
-            return p
-        if name and (name in p["name"] or name in p["name_en"].lower()):
-            return p
+def member_benefits(sbux_id: str) -> dict | None:
+    return MEMBER_BENEFITS.get(sbux_id)
+
+
+def member_benefit_list(sbux_id: str) -> list[dict]:
+    assets = ASSETS.get(sbux_id, {})
+    result = []
+    for c in assets.get("upp_coupons", []):
+        result.append({**c, "type": "优惠券"})
+    for c in assets.get("benefit_coupons", []):
+        result.append({**c, "type": "权益券"})
+    return result
+
+
+def coupon_query(order_id: str) -> list[dict]:
+    return [c for c in COUPONS if c["order_id"] == order_id]
+
+
+def coupon_detail(coupon_code: str) -> dict | None:
+    for c in COUPONS:
+        if c["coupon_code"] == coupon_code:
+            return c
     return None
 
 
-def check_inventory(store_id: str, product_id: str | None = None) -> list[dict]:
-    """Simulate inventory check. Randomly mark ~10% as out of stock."""
-    products = PRODUCTS if not product_id else [p for p in PRODUCTS if p["product_id"] == product_id]
-    results = []
-    for p in products:
-        random.seed(f"{store_id}-{p['product_id']}")
-        in_stock = random.random() > 0.1
-        results.append({
-            "product_id": p["product_id"],
-            "name": p["name"],
-            "in_stock": in_stock,
-            "note": "" if in_stock else "今日原料不足，暂时售罄",
-        })
-    return results
+def equity_query(order_id: str) -> dict | None:
+    for e in EQUITIES:
+        if e["order_id"] == order_id:
+            return e
+    return None
 
 
-def get_promotions() -> list[dict]:
-    return PROMOTIONS
+def equity_detail(order_id: str) -> dict | None:
+    return equity_query(order_id)
 
 
-def validate_api_key(key: str | None) -> bool:
-    return key in VALID_API_KEYS
+def assets_list(sbux_id: str) -> dict | None:
+    return ASSETS.get(sbux_id)
+
+
+def cashier_pay_query(pay_token: str) -> dict | None:
+    return PAYMENTS.get(pay_token)

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Starbucks MCP Server - AI Agent Coffee Integration</title>
+  <title>Starbucks MCP Server - B2B Open Platform</title>
   <style>
     :root {
       --sbux-green: #00704A;
@@ -20,290 +20,233 @@
       background: var(--sbux-white);
       line-height: 1.6;
     }
-
-    /* Hero */
     .hero {
       background: linear-gradient(135deg, var(--sbux-green-dark) 0%, var(--sbux-green) 100%);
       color: var(--sbux-white);
       padding: 80px 20px;
       text-align: center;
     }
-    .hero h1 {
-      font-size: 2.5rem;
-      margin-bottom: 16px;
-      font-weight: 700;
-    }
+    .hero h1 { font-size: 2.5rem; margin-bottom: 16px; }
     .hero .subtitle {
-      font-size: 1.2rem;
-      opacity: 0.9;
-      max-width: 600px;
-      margin: 0 auto 32px;
+      font-size: 1.2rem; opacity: 0.9; max-width: 700px; margin: 0 auto 32px;
     }
     .hero .badge {
-      display: inline-block;
-      background: var(--sbux-gold);
-      color: var(--sbux-green-dark);
-      padding: 6px 16px;
-      border-radius: 20px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      margin: 4px;
+      display: inline-block; background: var(--sbux-gold); color: var(--sbux-green-dark);
+      padding: 6px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; margin: 4px;
     }
-
-    /* Section */
-    section {
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 60px 20px;
-    }
+    section { max-width: 960px; margin: 0 auto; padding: 60px 20px; }
     section h2 {
-      font-size: 1.8rem;
-      color: var(--sbux-green-dark);
-      margin-bottom: 24px;
-      text-align: center;
+      font-size: 1.8rem; color: var(--sbux-green-dark); margin-bottom: 24px; text-align: center;
     }
-    section h3 {
-      font-size: 1.2rem;
-      color: var(--sbux-green);
-      margin: 24px 0 12px;
+    .arch-box {
+      background: var(--sbux-cream); border-radius: 12px; padding: 32px;
+      margin: 24px 0; font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.82rem; line-height: 1.9; overflow-x: auto; white-space: pre;
     }
-
-    /* Architecture */
-    .arch-diagram {
-      background: var(--sbux-cream);
-      border-radius: 12px;
-      padding: 32px;
-      margin: 24px 0;
-      font-family: 'SF Mono', 'Fira Code', monospace;
-      font-size: 0.85rem;
-      line-height: 1.8;
-      overflow-x: auto;
-      white-space: pre;
-      text-align: center;
-    }
-
-    /* Tools grid */
     .tools-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 16px;
-      margin-top: 24px;
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px; margin-top: 24px;
     }
     .tool-card {
-      background: var(--sbux-cream);
-      border-radius: 12px;
-      padding: 24px;
+      background: var(--sbux-cream); border-radius: 12px; padding: 20px;
       transition: transform 0.2s, box-shadow 0.2s;
     }
-    .tool-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(0,0,0,0.1);
-    }
+    .tool-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
     .tool-card .tool-name {
-      font-family: 'SF Mono', monospace;
-      font-size: 0.9rem;
-      color: var(--sbux-green);
-      font-weight: 600;
-      margin-bottom: 8px;
+      font-family: 'SF Mono', monospace; font-size: 0.85rem;
+      color: var(--sbux-green); font-weight: 600; margin-bottom: 4px;
     }
-    .tool-card .tool-desc {
-      font-size: 0.95rem;
-      color: #333;
-      margin-bottom: 8px;
+    .tool-card .tool-api {
+      font-family: 'SF Mono', monospace; font-size: 0.75rem;
+      color: #888; margin-bottom: 8px;
     }
-    .tool-card .tool-example {
-      font-size: 0.85rem;
-      color: #666;
-      font-style: italic;
-    }
-
-    /* Code block */
+    .tool-card .tool-desc { font-size: 0.9rem; color: #333; }
     .code-block {
-      background: var(--sbux-green-dark);
-      color: #e0e0e0;
-      border-radius: 12px;
-      padding: 24px;
-      margin: 16px 0;
-      overflow-x: auto;
-      font-family: 'SF Mono', 'Fira Code', monospace;
-      font-size: 0.85rem;
-      line-height: 1.6;
+      background: var(--sbux-green-dark); color: #e0e0e0; border-radius: 12px;
+      padding: 24px; margin: 16px 0; overflow-x: auto;
+      font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85rem; line-height: 1.6;
     }
     .code-block .comment { color: #6a9955; }
-    .code-block .string { color: #ce9178; }
-    .code-block .keyword { color: #569cd6; }
     .code-block .cmd { color: var(--sbux-gold); }
-
-    /* Steps */
-    .steps {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      margin: 24px 0;
-    }
-    .step {
-      display: flex;
-      align-items: flex-start;
-      gap: 16px;
-    }
+    .code-block .string { color: #ce9178; }
+    .steps { display: flex; flex-direction: column; gap: 16px; margin: 24px 0; }
+    .step { display: flex; align-items: flex-start; gap: 16px; }
     .step-num {
-      flex-shrink: 0;
-      width: 36px;
-      height: 36px;
-      background: var(--sbux-green);
-      color: white;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 0.9rem;
+      flex-shrink: 0; width: 36px; height: 36px; background: var(--sbux-green); color: white;
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 0.9rem;
     }
-    .step-content h4 {
-      font-size: 1rem;
-      margin-bottom: 4px;
-    }
-    .step-content p {
-      font-size: 0.9rem;
-      color: #555;
-    }
-
-    /* Clients */
-    .clients-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 12px;
-      margin: 24px 0;
-      text-align: center;
-    }
-    .client-card {
-      background: var(--sbux-cream);
-      border-radius: 12px;
-      padding: 20px 16px;
-    }
-    .client-card .name {
-      font-weight: 600;
-      margin-bottom: 4px;
-    }
-    .client-card .status {
-      font-size: 0.85rem;
-      color: var(--sbux-green);
-    }
-
-    /* Footer */
-    footer {
-      background: var(--sbux-green-dark);
-      color: rgba(255,255,255,0.7);
-      text-align: center;
-      padding: 32px 20px;
-      font-size: 0.85rem;
-    }
-    footer a { color: var(--sbux-gold); text-decoration: none; }
-
-    /* Scenario */
+    .step-content h4 { font-size: 1rem; margin-bottom: 4px; }
+    .step-content p { font-size: 0.9rem; color: #555; }
     .scenario {
-      background: var(--sbux-cream);
-      border-radius: 12px;
-      padding: 32px;
-      margin: 24px 0;
-      font-size: 0.95rem;
-      line-height: 2;
+      background: var(--sbux-cream); border-radius: 12px; padding: 32px;
+      margin: 24px 0; font-size: 0.95rem; line-height: 2;
     }
     .scenario .user { color: var(--sbux-green-dark); font-weight: 600; }
     .scenario .agent { color: var(--sbux-green); }
     .scenario .result {
-      background: white;
-      border-radius: 8px;
-      padding: 16px;
-      margin-top: 12px;
+      background: white; border-radius: 8px; padding: 16px; margin-top: 12px;
       border-left: 4px solid var(--sbux-green);
     }
+    .phase-table { width: 100%; border-collapse: collapse; margin: 24px 0; }
+    .phase-table th {
+      background: var(--sbux-green-dark); color: white; padding: 12px 16px;
+      text-align: left; font-size: 0.9rem;
+    }
+    .phase-table td {
+      padding: 10px 16px; border-bottom: 1px solid #eee; font-size: 0.9rem;
+    }
+    .phase-table tr:hover { background: var(--sbux-cream); }
+    .phase-tag {
+      display: inline-block; padding: 2px 10px; border-radius: 10px;
+      font-size: 0.75rem; font-weight: 600;
+    }
+    .phase-1 { background: #d4edda; color: #155724; }
+    .phase-2 { background: #fff3cd; color: #856404; }
+    .phase-3 { background: #f8d7da; color: #721c24; }
+    .clients-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px; margin: 24px 0; text-align: center;
+    }
+    .client-card { background: var(--sbux-cream); border-radius: 12px; padding: 20px 16px; }
+    .client-card .name { font-weight: 600; margin-bottom: 4px; }
+    .client-card .status { font-size: 0.85rem; color: var(--sbux-green); }
+    footer {
+      background: var(--sbux-green-dark); color: rgba(255,255,255,0.7);
+      text-align: center; padding: 32px 20px; font-size: 0.85rem;
+    }
+    footer a { color: var(--sbux-gold); text-decoration: none; }
   </style>
 </head>
 <body>
 
-  <!-- Hero -->
   <div class="hero">
     <h1>Starbucks MCP Server</h1>
     <p class="subtitle">
-      让 AI Agent 通过 MCP 协议直接查询星巴克门店、浏览菜单、检查库存、获取促销活动
+      星巴克中国 B2B 开放平台 MCP 接入层 —— 让 AI Agent 通过 MCP 协议调用现有 HTTP 开放平台全部能力
     </p>
     <span class="badge">MCP Protocol</span>
-    <span class="badge">Python 3.13</span>
-    <span class="badge">6 Tools</span>
-    <span class="badge">Phase 1 Demo</span>
+    <span class="badge">Kong Gateway</span>
+    <span class="badge">10 Tools (Phase 1)</span>
+    <span class="badge">B2B</span>
+    <span class="badge">Zero Platform Changes</span>
   </div>
 
   <!-- Architecture -->
   <section>
     <h2>Architecture</h2>
-    <div class="arch-diagram">
-┌──────────────────────────────────────────────┐
-│          AI Agent / MCP Client Layer         │
-│                                              │
-│  Claude Code   Cursor   Claude Desktop  ...  │
-│       └──────────┴──────────┴──────┘         │
-│                MCP Protocol                  │
-└──────────────────────┬───────────────────────┘
-                       │
-             SSE / Streamable HTTP
-                       │
-┌──────────────────────▼───────────────────────┐
-│          MCP Adapter Layer (this project)     │
-│                                              │
-│  ┌────────────┬──────────────┬────────────┐  │
-│  │  Tool      │   Semantic   │   Auth     │  │
-│  │  Registry  │   Formatter  │ Passthrough│  │
-│  └────────────┴──────────────┴────────────┘  │
-│                                              │
-│  ┌────────┐ ┌────────┐ ┌────────┐ ┌──────┐  │
-│  │ Stores │ │  Menu  │ │Inventory│ │Promos│  │
-│  │ Tools  │ │ Tools  │ │ Tools  │ │Tools │  │
-│  └────────┘ └────────┘ └────────┘ └──────┘  │
-└──────────────────────┬───────────────────────┘
-                       │
-             HTTPS + HMAC Signing
-                       ▼
-          openapi.starbucks.com.cn
-          (Existing Open Platform)
+    <div class="arch-box">
+B2B Agent (NIO / Qwen / Fliggy / Custom)
+    |  MCP Protocol (SSE / Streamable HTTP)
+    v
++-------------- Kong (existing) ---------------+
+|                                               |
+|  HMAC Auth   IP Whitelist   Rate Limit   ACL  |  <-- reuse existing B2B credentials
+|                                               |
+|  /sse, /mcp --> MCP Adapter (new service)     |  <-- 2 new routes
+|  /coupon/*  --> openapi-platform (unchanged)  |
+|  /cashier/* --> openapi-platform (unchanged)  |
++-------------------+--+------------------------+
+                    |  |
+      +-------------+  +------------+
+      v                              v
+  MCP Adapter                  openapi-platform
+  (this project)               (zero changes)
+  - MCP protocol               - existing HTTP APIs
+  - tool registry               - business logic
+  - semantic formatting          - data layer
+  - permission filtering
+      |
+      | internal network
+      v
+  openapi-platform backend
     </div>
+    <p style="text-align:center;color:#666;margin-top:12px;">
+      Kong handles auth/rate-limiting/ACL. MCP Adapter only does protocol conversion + semantic formatting.
+    </p>
   </section>
 
   <!-- Tools -->
   <section>
-    <h2>Available Tools</h2>
+    <h2>Phase 1 Tools (Read-Only)</h2>
     <div class="tools-grid">
       <div class="tool-card">
-        <div class="tool-name">search_nearby_stores</div>
-        <div class="tool-desc">Search nearby Starbucks stores by city, keyword, or coordinates</div>
-        <div class="tool-example">"Find Starbucks near Lujiazui, Shanghai"</div>
+        <div class="tool-name">member_query</div>
+        <div class="tool-api">POST /crmadapter/account/query</div>
+        <div class="tool-desc">Query member info by mobile, openId, or sbuxId</div>
       </div>
       <div class="tool-card">
-        <div class="tool-name">get_store_detail</div>
-        <div class="tool-desc">Store details: address, hours, services, contact</div>
-        <div class="tool-example">"What time does this store close?"</div>
+        <div class="tool-name">member_tier</div>
+        <div class="tool-api">POST /crmadapter/account/memberTier</div>
+        <div class="tool-desc">Member tier details: stars, expiry, next-tier gap</div>
       </div>
       <div class="tool-card">
-        <div class="tool-name">get_menu</div>
-        <div class="tool-desc">Browse menu by category: espresso, seasonal, tea, food</div>
-        <div class="tool-example">"What new drinks are available this season?"</div>
+        <div class="tool-name">member_benefits</div>
+        <div class="tool-api">POST /crmadapter/customers/getBenefits</div>
+        <div class="tool-desc">8 benefit statuses: welcome, birthday, upgrade rewards</div>
       </div>
       <div class="tool-card">
-        <div class="tool-name">get_product_detail</div>
-        <div class="tool-desc">Product details: sizes, prices, calories, customizations</div>
-        <div class="tool-example">"Can I get oat milk in a Flat White?"</div>
+        <div class="tool-name">member_benefit_list</div>
+        <div class="tool-api">POST /crmadapter/asset/coupon/getBenefitList</div>
+        <div class="tool-desc">List all coupons and benefit vouchers for a member</div>
       </div>
       <div class="tool-card">
-        <div class="tool-name">check_store_inventory</div>
-        <div class="tool-desc">Check product availability at a specific store</div>
-        <div class="tool-example">"Is the Sakura Latte available today?"</div>
+        <div class="tool-name">coupon_query</div>
+        <div class="tool-api">POST /coupon/query</div>
+        <div class="tool-desc">Check if coupons were generated for an order</div>
       </div>
       <div class="tool-card">
-        <div class="tool-name">get_promotions</div>
-        <div class="tool-desc">Current promotions: BOGO, discounts, member offers</div>
-        <div class="tool-example">"Any buy-one-get-one deals right now?"</div>
+        <div class="tool-name">coupon_detail</div>
+        <div class="tool-api">POST /coupon/detail</div>
+        <div class="tool-desc">Coupon details: status, face value, redemption count</div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-name">equity_query</div>
+        <div class="tool-api">POST /equity/query</div>
+        <div class="tool-desc">Check equity/benefit distribution status</div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-name">equity_detail</div>
+        <div class="tool-api">POST /equity/detail</div>
+        <div class="tool-desc">Full equity details: amount, validity, redemption</div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-name">assets_list</div>
+        <div class="tool-api">POST /assets/list</div>
+        <div class="tool-desc">All customer assets: UPP coupons + benefit coupons</div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-name">cashier_pay_query</div>
+        <div class="tool-api">POST /cashier/payQuery</div>
+        <div class="tool-desc">Payment status: in-progress / success / failed</div>
       </div>
     </div>
+  </section>
+
+  <!-- Phased Rollout -->
+  <section>
+    <h2>Phased Rollout</h2>
+    <table class="phase-table">
+      <tr><th>Phase</th><th>Tools</th><th>Type</th><th>Timeline</th></tr>
+      <tr>
+        <td><span class="phase-tag phase-1">Phase 1</span></td>
+        <td>member_query, member_tier, member_benefits, coupon_query, coupon_detail, equity_query, equity_detail, assets_list, cashier_pay_query</td>
+        <td>Read-only</td>
+        <td>Week 1-2</td>
+      </tr>
+      <tr>
+        <td><span class="phase-tag phase-2">Phase 2</span></td>
+        <td>member_register, member_bind, coupon_create, coupon_claim, equity_send, benefit_issue, srkit_send</td>
+        <td>Write</td>
+        <td>Week 3-5</td>
+      </tr>
+      <tr>
+        <td><span class="phase-tag phase-3">Phase 3</span></td>
+        <td>cashier_checkout, order_push, stars_lock, stars_redeem, coupon_cancel, equity_cancel, order_refund</td>
+        <td>Transaction</td>
+        <td>Week 6-8</td>
+      </tr>
+    </table>
   </section>
 
   <!-- Quick Start -->
@@ -312,49 +255,33 @@
     <div class="steps">
       <div class="step">
         <div class="step-num">1</div>
-        <div class="step-content">
-          <h4>Clone &amp; Install</h4>
-          <p>Requires uv and Python 3.13+</p>
-        </div>
+        <div class="step-content"><h4>Clone & Install</h4><p>Requires uv + Python 3.13</p></div>
       </div>
     </div>
     <div class="code-block">
 <span class="cmd">$</span> git clone https://github.com/sawzhang/starbucks-mcp-server.git
-<span class="cmd">$</span> cd starbucks-mcp-server
-<span class="cmd">$</span> uv sync
+<span class="cmd">$</span> cd starbucks-mcp-server && uv sync
     </div>
-
     <div class="steps">
       <div class="step">
         <div class="step-num">2</div>
-        <div class="step-content">
-          <h4>Run the Demo</h4>
-          <p>Execute all 6 tools in sequence</p>
-        </div>
+        <div class="step-content"><h4>Run the Demo</h4><p>9-step B2B scenario: member -> tier -> benefits -> coupons -> equity -> assets -> payment</p></div>
       </div>
     </div>
     <div class="code-block">
 <span class="cmd">$</span> uv run sbux demo
-<span class="comment"># Step 1: Search Shanghai stores</span>
-<span class="comment"># Step 2: Get store detail</span>
-<span class="comment"># Step 3: Browse seasonal menu</span>
-<span class="comment"># Step 4: Product detail (Latte)</span>
-<span class="comment"># Step 5: Check inventory</span>
-<span class="comment"># Step 6: Current promotions</span>
+<span class="comment"># Step 1: member_query(mobile="138****1234")</span>
+<span class="comment"># Step 2: member_tier(sbux_id="SBUX_M_100001")</span>
+<span class="comment"># Step 3: member_benefits(sbux_id="SBUX_M_100001")</span>
+<span class="comment"># ... through Step 9: cashier_pay_query</span>
     </div>
-
     <div class="steps">
       <div class="step">
         <div class="step-num">3</div>
-        <div class="step-content">
-          <h4>Connect to Claude Code / Cursor</h4>
-          <p>Add to your MCP config file</p>
-        </div>
+        <div class="step-content"><h4>Connect AI Agent</h4><p>Add to Claude Code or Cursor MCP config</p></div>
       </div>
     </div>
     <div class="code-block">
-<span class="comment">// Claude Code: ~/.claude/claude_code_settings.json</span>
-<span class="comment">// Cursor:      .cursor/mcp.json</span>
 {
   <span class="string">"mcpServers"</span>: {
     <span class="string">"starbucks"</span>: {
@@ -368,19 +295,19 @@
 
   <!-- Scenario -->
   <section>
-    <h2>Real-World Scenario</h2>
+    <h2>B2B Scenario: NIO Car Agent</h2>
     <div class="scenario">
-      <div class="user">User:</div>
-      "I have a meeting near Lujiazui, pre-order a grande oat latte with less ice at the nearest Starbucks"
+      <div class="user">NIO Car Owner:</div>
+      "Check my Starbucks membership and available coupons before I arrive"
       <br><br>
-      <div class="agent">AI Agent executes:</div>
-      <br>
-      Step 1: <code>search_nearby_stores(city="Shanghai", keyword="Lujiazui")</code> &rarr; 3 stores found<br>
-      Step 2: <code>get_store_detail(store_id="SH-LJZ-001")</code> &rarr; Open, supports pickup<br>
-      Step 3: <code>check_store_inventory(store_id="SH-LJZ-001", product_id="ESP-002")</code> &rarr; In stock<br>
-      Step 4: <code>get_product_detail(name="Latte")</code> &rarr; Grande ¥37, oat milk +¥5<br>
+      <div class="agent">NIO Agent (via MCP):</div><br>
+      Step 1: <code>member_query(mobile="138****1234")</code> &rarr; Gold member, 142 stars<br>
+      Step 2: <code>member_tier(sbux_id="SBUX_M_100001")</code> &rarr; 358 stars to Diamond<br>
+      Step 3: <code>assets_list(sbux_id="SBUX_M_100001")</code> &rarr; 3 available coupons<br>
       <div class="result">
-        "Bund Raffles City store (8 min walk from Lujiazui), grande oat latte with less ice, order #A042, ready at 14:30."
+        "You're a Gold member with 142 stars. You have 3 coupons available:
+        a Tall drink voucher (expires Apr 30), a birthday free drink (expires Mar 31),
+        and a friend referral reward worth ¥30."
       </div>
     </div>
   </section>
@@ -389,39 +316,21 @@
   <section>
     <h2>Compatible MCP Clients</h2>
     <div class="clients-grid">
-      <div class="client-card">
-        <div class="name">Claude Code CLI</div>
-        <div class="status">Native Support</div>
-      </div>
-      <div class="client-card">
-        <div class="name">Cursor</div>
-        <div class="status">Native Support</div>
-      </div>
-      <div class="client-card">
-        <div class="name">Claude Desktop</div>
-        <div class="status">Native Support</div>
-      </div>
-      <div class="client-card">
-        <div class="name">Cline / Roo Code</div>
-        <div class="status">Native Support</div>
-      </div>
-      <div class="client-card">
-        <div class="name">LangChain Agent</div>
-        <div class="status">Via MCP SDK</div>
-      </div>
-      <div class="client-card">
-        <div class="name">Custom Agent</div>
-        <div class="status">Via MCP SDK</div>
-      </div>
+      <div class="client-card"><div class="name">Claude Code</div><div class="status">Native</div></div>
+      <div class="client-card"><div class="name">Cursor</div><div class="status">Native</div></div>
+      <div class="client-card"><div class="name">Claude Desktop</div><div class="status">Native</div></div>
+      <div class="client-card"><div class="name">NIO Car Agent</div><div class="status">B2B</div></div>
+      <div class="client-card"><div class="name">Qwen Agent</div><div class="status">B2B</div></div>
+      <div class="client-card"><div class="name">Custom Agent</div><div class="status">MCP SDK</div></div>
     </div>
   </section>
 
-  <!-- Footer -->
   <footer>
     <p>
-      Starbucks MCP Server &mdash; Open Source Demo |
+      Starbucks MCP Server &mdash; B2B Open Platform |
       <a href="https://github.com/sawzhang/starbucks-mcp-server">GitHub</a> |
-      Built with <a href="https://modelcontextprotocol.io">MCP Protocol</a>
+      <a href="https://github.com/sawzhang/starbucks-mcp-server/blob/main/docs/ARCHITECTURE.md">Architecture Doc</a> |
+      <a href="https://github.com/sawzhang/starbucks-mcp-server/blob/main/docs/DEPLOY_DECISION.md">Deploy Decision</a>
     </p>
     <p style="margin-top:8px;">MIT License &copy; 2026</p>
   </footer>

@@ -1,4 +1,9 @@
-"""Starbucks MCP Server - Phase 1 read-only tools demo."""
+"""Starbucks MCP Server — Phase 1 read-only tools.
+
+Maps 1:1 to real HTTP Open Platform APIs (openapi.starbucks.com.cn).
+In production this service sits behind Kong; auth/rate-limiting/ACL are
+handled by Kong before requests reach here.  In demo mode, mock data is used.
+"""
 
 from mcp.server.fastmcp import FastMCP
 
@@ -7,186 +12,255 @@ from . import formatters, mock_data
 mcp = FastMCP(
     "Starbucks China",
     instructions=(
-        "星巴克中国 MCP Server。"
-        "可查询附近门店、浏览菜单、查看产品详情、检查库存、获取促销活动。"
-        "所有工具需要有效的 API Key（demo 可用：demo-key-001）。"
+        "星巴克中国 MCP Server（B2B 开放平台）。\n"
+        "提供会员查询、券码查询、权益查询、资产查询、支付状态查询等能力。\n"
+        "所有接口映射自 openapi.starbucks.com.cn 现有 HTTP API。\n"
+        "鉴权由 Kong 网关处理，MCP 层不涉及签名逻辑。"
     ),
 )
 
 # ---------------------------------------------------------------------------
-# Auth helper
-# ---------------------------------------------------------------------------
-
-def _check_key(api_key: str | None) -> None:
-    """Validate API key, raise if invalid."""
-    if not api_key or not mock_data.validate_api_key(api_key):
-        raise ValueError(
-            "API Key 无效或缺失。请使用有效的 API Key。"
-            "（Demo 可用 key：demo-key-001 / sbux-test-2026 / starbucks-dev）"
-        )
-
-
-# ---------------------------------------------------------------------------
-# Tool 1: search_nearby_stores
+# Tool 1: member_query  →  POST /crmadapter/account/query
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-def search_nearby_stores(
-    api_key: str,
-    city: str | None = None,
-    keyword: str | None = None,
-    latitude: float | None = None,
-    longitude: float | None = None,
-    radius: float = 3000,
+def member_query(
+    mobile: str | None = None,
+    open_id: str | None = None,
+    sbux_id: str | None = None,
 ) -> str:
-    """搜索附近的星巴克门店。支持按城市、地标关键词或坐标查询。
+    """查询星巴克会员信息。通过手机号、openId 或会员ID查询。
+
+    对应 HTTP API: POST /crmadapter/account/query
 
     Args:
-        api_key: 开放平台 API Key（demo 可用：demo-key-001）
-        city: 城市名，如"上海"、"北京"
-        keyword: 地标或区域关键词，如"陆家嘴"、"静安"
-        latitude: 用户纬度（与 longitude 一起使用）
-        longitude: 用户经度（与 latitude 一起使用）
-        radius: 搜索半径，单位米，默认 3000
+        mobile: 手机号（模糊匹配，如 "138****1234"）
+        open_id: 第三方平台 openId
+        sbux_id: 星巴克会员ID
     """
-    _check_key(api_key)
-    stores = mock_data.search_stores(city, keyword, latitude, longitude, radius)
-    return formatters.format_stores(stores)
+    if not any([mobile, open_id, sbux_id]):
+        return "请提供 mobile、open_id 或 sbux_id 中的至少一个。"
+    m = mock_data.member_query(mobile, open_id, sbux_id)
+    if not m:
+        return "未找到匹配的会员信息。请检查查询参数。"
+    return formatters.format_member(m)
 
 
 # ---------------------------------------------------------------------------
-# Tool 2: get_store_detail
+# Tool 2: member_tier  →  POST /crmadapter/account/memberTier
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-def get_store_detail(api_key: str, store_id: str) -> str:
-    """获取星巴克门店详情，包括地址、营业时间、可用服务等。
+def member_tier(sbux_id: str) -> str:
+    """查询会员等级详情，包括当前星星数、等级有效期、距下一级的差距。
+
+    对应 HTTP API: POST /crmadapter/account/memberTier
 
     Args:
-        api_key: 开放平台 API Key
-        store_id: 门店编号，如"SH-LJZ-001"
+        sbux_id: 星巴克会员ID
     """
-    _check_key(api_key)
-    store = mock_data.get_store(store_id)
-    if not store:
-        return f"未找到门店编号为 {store_id} 的门店。请检查门店编号是否正确。"
-    return formatters.format_store_detail(store)
+    t = mock_data.member_tier(sbux_id)
+    if not t:
+        return f"未找到会员 {sbux_id} 的等级信息。"
+    return formatters.format_member_tier(t)
 
 
 # ---------------------------------------------------------------------------
-# Tool 3: get_menu
+# Tool 3: member_benefits  →  POST /crmadapter/customers/getBenefits
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-def get_menu(api_key: str, category: str | None = None) -> str:
-    """获取星巴克菜单。可按分类筛选。
+def member_benefits(sbux_id: str) -> str:
+    """查询会员 8 项权益状态（新人礼、生日奖励、升级奖励等）。
+
+    对应 HTTP API: POST /crmadapter/customers/getBenefits
+
+    状态说明: 0=隐藏, 1=未解锁, 2=可使用, 3=已使用/已过期
 
     Args:
-        api_key: 开放平台 API Key
-        category: 可选分类筛选。可选值：espresso(浓缩咖啡)、cold_brew(冷萃)、frappuccino(星冰乐)、tea(茶饮)、seasonal(当季限定)、food(轻食)
+        sbux_id: 星巴克会员ID
     """
-    _check_key(api_key)
-    category_name = mock_data.MENU_CATEGORIES.get(category) if category else None
-    products = mock_data.get_menu(category)
-    return formatters.format_menu(products, category_name)
+    b = mock_data.member_benefits(sbux_id)
+    if not b:
+        return f"未找到会员 {sbux_id} 的权益信息。"
+    return formatters.format_member_benefits(sbux_id, b)
 
 
 # ---------------------------------------------------------------------------
-# Tool 4: get_product_detail
+# Tool 4: member_benefit_list  →  POST /crmadapter/asset/coupon/getBenefitList
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-def get_product_detail(
-    api_key: str,
-    product_id: str | None = None,
-    name: str | None = None,
-) -> str:
-    """获取单个产品的详细信息，包括杯型价格、热量、定制选项。
+def member_benefit_list(sbux_id: str) -> str:
+    """查询会员的优惠券和权益券列表。
+
+    对应 HTTP API: POST /crmadapter/asset/coupon/getBenefitList
 
     Args:
-        api_key: 开放平台 API Key
-        product_id: 产品编号，如"ESP-001"
-        name: 产品名称关键词，如"馥芮白"、"拿铁"
+        sbux_id: 星巴克会员ID
     """
-    _check_key(api_key)
-    if not product_id and not name:
-        return "请提供 product_id 或 name 来查询产品详情。"
-    product = mock_data.get_product(product_id, name)
-    if not product:
-        return f"未找到匹配的产品。请尝试其他关键词或产品编号。"
-    return formatters.format_product_detail(product)
+    items = mock_data.member_benefit_list(sbux_id)
+    return formatters.format_benefit_list(items)
 
 
 # ---------------------------------------------------------------------------
-# Tool 5: check_store_inventory
+# Tool 5: coupon_query  →  POST /coupon/query
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-def check_store_inventory(
-    api_key: str,
-    store_id: str,
-    product_id: str | None = None,
-) -> str:
-    """查询指定门店的产品库存情况。
+def coupon_query(order_id: str) -> str:
+    """查询订单关联的券码生成状态。
+
+    对应 HTTP API: POST /coupon/query
 
     Args:
-        api_key: 开放平台 API Key
-        store_id: 门店编号
-        product_id: 可选，指定产品编号查询单个产品库存
+        order_id: 订单号
     """
-    _check_key(api_key)
-    store = mock_data.get_store(store_id)
-    store_name = store["name"] if store else store_id
-    items = mock_data.check_inventory(store_id, product_id)
-    if not items:
-        return f"未找到门店 {store_id} 的库存信息。"
-    return formatters.format_inventory(items, store_name)
+    coupons = mock_data.coupon_query(order_id)
+    return formatters.format_coupon_query(coupons, order_id)
 
 
 # ---------------------------------------------------------------------------
-# Tool 6: get_promotions
+# Tool 6: coupon_detail  →  POST /coupon/detail
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-def get_promotions(api_key: str) -> str:
-    """获取当前星巴克促销活动信息。
+def coupon_detail(coupon_code: str) -> str:
+    """查询单张券码的详细信息，包括状态、面值、有效期、核销次数。
+
+    对应 HTTP API: POST /coupon/detail
+
+    券码状态: 4=未使用, 10=已使用, 20=已过期, 30=已作废
 
     Args:
-        api_key: 开放平台 API Key
+        coupon_code: 券码（如 "SBX20260301A001"）
     """
-    _check_key(api_key)
-    promos = mock_data.get_promotions()
-    return formatters.format_promotions(promos)
+    c = mock_data.coupon_detail(coupon_code)
+    if not c:
+        return f"未找到券码 {coupon_code}。请检查券码是否正确。"
+    return formatters.format_coupon_detail(c)
+
+
+# ---------------------------------------------------------------------------
+# Tool 7: equity_query  →  POST /equity/query
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def equity_query(order_id: str) -> str:
+    """查询权益发放状态（电子券是否发放成功）。
+
+    对应 HTTP API: POST /equity/query
+
+    Args:
+        order_id: 权益订单号
+    """
+    e = mock_data.equity_query(order_id)
+    if not e:
+        return f"未找到权益订单 {order_id}。"
+    return formatters.format_equity_detail(e)
+
+
+# ---------------------------------------------------------------------------
+# Tool 8: equity_detail  →  POST /equity/detail
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def equity_detail(order_id: str) -> str:
+    """查询权益详情，包括券码、状态、金额、核销次数等完整信息。
+
+    对应 HTTP API: POST /equity/detail
+
+    Args:
+        order_id: 权益订单号
+    """
+    e = mock_data.equity_detail(order_id)
+    if not e:
+        return f"未找到权益订单 {order_id}。"
+    return formatters.format_equity_detail(e)
+
+
+# ---------------------------------------------------------------------------
+# Tool 9: assets_list  →  POST /assets/list
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def assets_list(sbux_id: str) -> str:
+    """查询客户全部资产（优惠券 + 权益券），一览式展示。
+
+    对应 HTTP API: POST /assets/list
+
+    Args:
+        sbux_id: 星巴克会员ID
+    """
+    a = mock_data.assets_list(sbux_id)
+    if not a:
+        return f"未找到会员 {sbux_id} 的资产信息。"
+    return formatters.format_assets(sbux_id, a)
+
+
+# ---------------------------------------------------------------------------
+# Tool 10: cashier_pay_query  →  POST /cashier/payQuery
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def cashier_pay_query(pay_token: str) -> str:
+    """查询支付状态（收银台下单后的支付结果）。
+
+    对应 HTTP API: POST /cashier/payQuery
+
+    状态: 0=支付中, 1=支付成功, 2=支付失败
+
+    Args:
+        pay_token: 支付令牌（收银下单接口返回的 payToken）
+    """
+    p = mock_data.cashier_pay_query(pay_token)
+    if not p:
+        return f"未找到支付令牌 {pay_token} 对应的支付记录。"
+    return formatters.format_pay_query(p, pay_token)
 
 
 # ---------------------------------------------------------------------------
 # Resources
 # ---------------------------------------------------------------------------
 
-@mcp.resource("starbucks://menu/seasonal")
-def seasonal_menu() -> str:
-    """当季限定菜单"""
-    products = mock_data.get_menu("seasonal")
-    return formatters.format_menu(products, "当季限定")
-
-
-@mcp.resource("starbucks://promotions/current")
-def current_promotions() -> str:
-    """当前促销活动"""
-    return formatters.format_promotions(mock_data.get_promotions())
-
-
-@mcp.resource("starbucks://customization/guide")
-def customization_guide() -> str:
-    """饮品定制选项说明"""
+@mcp.resource("starbucks://api/catalog")
+def api_catalog() -> str:
+    """星巴克 MCP 开放平台接口目录"""
     return (
-        "星巴克饮品定制指南：\n\n"
-        "1. 杯型：中杯(Tall) / 大杯(Grande) / 超大杯(Venti)\n"
-        "2. 奶类：全脂奶(默认) / 脱脂奶 / 燕麦奶(+5元) / 椰奶(+5元) / 杏仁奶(+5元)\n"
-        "3. 温度：热 / 冰 / 温（部分饮品限选）\n"
-        "4. 甜度：标准 / 少糖 / 半糖 / 无糖\n"
-        "5. 加浓：可额外添加一份浓缩（extra shot），+4元\n"
-        "6. 糖浆：香草 / 焦糖 / 榛果 / 太妃，+4元/泵\n"
+        "星巴克 MCP 开放平台 — 接口目录\n\n"
+        "Phase 1 只读 Tools（当前可用）：\n"
+        "  1. member_query        → POST /crmadapter/account/query\n"
+        "  2. member_tier         → POST /crmadapter/account/memberTier\n"
+        "  3. member_benefits     → POST /crmadapter/customers/getBenefits\n"
+        "  4. member_benefit_list → POST /crmadapter/asset/coupon/getBenefitList\n"
+        "  5. coupon_query        → POST /coupon/query\n"
+        "  6. coupon_detail       → POST /coupon/detail\n"
+        "  7. equity_query        → POST /equity/query\n"
+        "  8. equity_detail       → POST /equity/detail\n"
+        "  9. assets_list         → POST /assets/list\n"
+        "  10. cashier_pay_query  → POST /cashier/payQuery\n\n"
+        "Phase 2 写入 Tools（规划中）：\n"
+        "  - member_register, member_bind\n"
+        "  - coupon_create, coupon_claim\n"
+        "  - equity_send, benefit_issue, srkit_send\n\n"
+        "Phase 3 交易闭环（规划中）：\n"
+        "  - cashier_checkout, order_push\n"
+        "  - stars_lock, stars_redeem\n"
+        "  - coupon_cancel, equity_cancel, order_refund\n"
+    )
+
+
+@mcp.resource("starbucks://auth/guide")
+def auth_guide() -> str:
+    """鉴权说明"""
+    return (
+        "星巴克 MCP 鉴权说明\n\n"
+        "MCP Server 部署在 Kong 网关后面，鉴权由 Kong 处理：\n\n"
+        "1. B2B 客户使用已有的 appKey + appSecret\n"
+        "2. 按 HMAC-SHA256 规范签名请求\n"
+        "3. Kong 验签 → 注入 Consumer 身份 → 转发到 MCP Adapter\n"
+        "4. MCP Adapter 根据 Consumer Groups 过滤可用 Tool\n\n"
+        "Demo 模式下无需签名，直接可用。\n"
     )
 
 

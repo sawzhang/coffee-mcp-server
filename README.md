@@ -1,8 +1,9 @@
 # Starbucks China MCP Server
 
-AI Agent 通过 MCP 协议查询星巴克门店、浏览菜单、检查库存、获取促销活动。
+星巴克中国 B2B 开放平台 MCP Server —— 让 AI Agent 通过 MCP 协议调用星巴克现有 HTTP 开放平台能力。
 
-> **MCP (Model Context Protocol)** 是 AI Agent 与外部服务交互的开放协议。本项目让 Claude Code、Cursor、Claude Desktop 等 AI 工具可以直接"对话"星巴克服务。
+> 所有 MCP Tool **严格 1:1 映射** `openapi.starbucks.com.cn` 现有 HTTP 接口，不新增业务逻辑。
+> 鉴权由 Kong 网关处理，MCP 层只做协议转换 + 语义化格式化。
 
 ## Quick Start
 
@@ -10,42 +11,65 @@ AI Agent 通过 MCP 协议查询星巴克门店、浏览菜单、检查库存、
 # 安装依赖 (需要 uv + Python 3.13)
 uv sync
 
-# 运行完整 Demo（6 步流程演示）
+# 运行完整 Demo（9 步流程演示）
 uv run sbux demo
 
 # 交互式模式
 uv run sbux interactive
 ```
 
-## 可用 Tools
+## Architecture
 
-| Tool | 功能 | 示例场景 |
-|------|------|----------|
-| `search_nearby_stores` | 搜索附近门店 | "帮我找上海陆家嘴附近的星巴克" |
-| `get_store_detail` | 门店详情 | "这家店几点关门，有没有座位" |
-| `get_menu` | 浏览菜单 | "最近有什么新品" |
-| `get_product_detail` | 产品详情 | "馥芮白能加燕麦奶吗" |
-| `check_store_inventory` | 库存查询 | "这杯今天有没有货" |
-| `get_promotions` | 促销活动 | "现在有什么买一送一" |
+```
+B2B Agent (蔚来/千问/飞猪)
+    │  MCP Protocol (SSE / Streamable HTTP)
+    ▼
+┌──────────── Kong ────────────┐
+│  HMAC Auth ✓  ACL ✓  限流 ✓  │  ← 复用现有 B2B 客户凭证
+│                              │
+│  /sse, /mcp → MCP Adapter   │  ← 新增 2 条路由
+│  /coupon/*  → 现有后端       │  ← 不动
+└──────────────┬───────────────┘
+               ▼
+         MCP Adapter (本项目)
+         ├── MCP 协议处理
+         ├── Tool 权限过滤
+         ├── 参数映射
+         └── 语义化转换
+               │  内网直连
+               ▼
+         openapi-platform 后端 (不动)
+```
+
+## Phase 1 Tools（10 个只读，当前可用）
+
+| MCP Tool | HTTP API | 功能 |
+|----------|----------|------|
+| `member_query` | `POST /crmadapter/account/query` | 查询会员信息 |
+| `member_tier` | `POST /crmadapter/account/memberTier` | 会员等级详情 |
+| `member_benefits` | `POST /crmadapter/customers/getBenefits` | 8 项权益状态 |
+| `member_benefit_list` | `POST /crmadapter/asset/coupon/getBenefitList` | 券列表 |
+| `coupon_query` | `POST /coupon/query` | 订单券码查询 |
+| `coupon_detail` | `POST /coupon/detail` | 券码详情 |
+| `equity_query` | `POST /equity/query` | 权益发放查询 |
+| `equity_detail` | `POST /equity/detail` | 权益详情 |
+| `assets_list` | `POST /assets/list` | 客户全部资产 |
+| `cashier_pay_query` | `POST /cashier/payQuery` | 支付状态查询 |
 
 ## CLI 命令
 
 ```bash
-uv run sbux stores 上海              # 搜索上海门店
-uv run sbux stores 北京 三里屯       # 按关键词搜索
-uv run sbux store SH-LJZ-001        # 门店详情
-uv run sbux menu                     # 全部菜单
-uv run sbux menu seasonal            # 当季限定
-uv run sbux product 馥芮白           # 产品详情
-uv run sbux inventory SH-LJZ-001    # 库存查询
-uv run sbux promos                   # 促销活动
+uv run sbux member 138****1234          # 查会员（手机号）
+uv run sbux member SBUX_M_100001       # 查会员（会员ID）
+uv run sbux tier SBUX_M_100001         # 等级详情
+uv run sbux benefits SBUX_M_100001     # 权益状态
+uv run sbux assets SBUX_M_100001       # 全部资产
+uv run sbux coupon SBX20260301A001     # 券码详情
+uv run sbux equity EQ_2026030100001    # 权益详情
+uv run sbux pay PAY_TOKEN_001          # 支付状态
 ```
 
-## 接入 AI 工具
-
-### Claude Code / Cursor
-
-在配置文件中添加：
+## 接入 Claude Code / Cursor
 
 ```json
 {
@@ -58,33 +82,22 @@ uv run sbux promos                   # 促销活动
 }
 ```
 
-然后直接对话：
+## B2B 场景示例
 
+**蔚来车机 Agent**：
 ```
-> 帮我查一下上海来福士附近的星巴克，今天有没有燕麦拿铁
+车主: "帮我查一下我的星巴克会员等级和可用优惠券"
 
-Claude 自动调用:
-  search_nearby_stores → get_product_detail → check_store_inventory
-```
-
-## 架构
-
-```
-AI Agent (Claude Code / Cursor / Claude Desktop)
-         │  MCP Protocol
-         ▼
-   MCP Adapter Layer
-   ├── Tool Registry        — 6 个只读 Tool
-   ├── 语义化转换层          — JSON → 自然语言
-   └── Auth Passthrough     — API Key / HMAC 签名透传
-         │
-         ▼
-   openapi.starbucks.com.cn (现有开放平台)
+Agent 调用链:
+  member_query(mobile="138****1234") → 确认金星会员
+  member_tier(sbux_id="SBUX_M_100001") → 142 颗星，距钻星差 358 颗
+  assets_list(sbux_id="SBUX_M_100001") → 3 张可用券
 ```
 
-## Demo API Keys
+## Docs
 
-演示模式下可用的 Key：`demo-key-001`、`sbux-test-2026`、`starbucks-dev`
+- [Architecture](docs/ARCHITECTURE.md) — 完整 API 映射表 + 分期开放策略
+- [Deploy Decision](docs/DEPLOY_DECISION.md) — Kong 架构下的部署方案分析
 
 ## License
 
