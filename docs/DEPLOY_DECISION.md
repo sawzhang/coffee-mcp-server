@@ -1,271 +1,280 @@
-# 部署架构决策：独立 Adapter vs 改造现有平台
+# 部署架构决策：Kong 网关下的 MCP 接入方案
 
-## 先定义两个方案
+## 0. 关键前提
 
-### 方案 A：独立 MCP Adapter 服务
-
-```
-B2B Agent ──MCP──▶ mcp.starbucks.com.cn (新服务)
-                         │
-                    HTTPS + HMAC 签名
-                         │
-                         ▼
-                   openapi.starbucks.com.cn (不动)
-```
-
-MCP Adapter 是一个**独立进程/独立服务**，自己实现 HMAC 签名逻辑，
-通过公网/内网调用现有 HTTP 开放平台。
-
-### 方案 B：在现有开放平台内部加 MCP 协议
+现有开放平台架构：
 
 ```
-B2B Agent ──MCP──▶ openapi.starbucks.com.cn/mcp (同一服务新路由)
-                         │
-                    进程内直接调用
-                         │
-                         ▼
-                   现有业务 Handler (不动)
+B2B 客户 ──HTTPS + HMAC──▶ Kong ──▶ 后端服务
+                            │
+                     Kong 负责:
+                     ├── HMAC / SM2 签名验证
+                     ├── IP 白名单
+                     ├── 限流 (per Consumer)
+                     ├── ACL / 接口级授权
+                     └── 日志审计
 ```
 
-在现有 HTTP 开放平台的 API Gateway 或应用层，新增 MCP 协议端点，
-直接复用同进程的鉴权中间件和路由逻辑。
+**这一条信息改变了整个决策。**
+
+之前推荐"在现有平台内部加 MCP 模块"的核心理由是：
+独立服务需要重写 HMAC 签名和鉴权逻辑。
+
+但如果鉴权在 Kong 层，后端服务本身并不做签名验证——
+那 MCP Adapter 也不需要做，**只要它也挂在 Kong 后面**。
 
 ---
 
-## 逐项对比
+## 1. 推翻之前结论，重新给三个方案
 
-### 1. 鉴权复用
-
-| | 方案 A（独立服务） | 方案 B（改造平台） |
-|---|---|---|
-| HMAC 签名 | Adapter 必须**重新实现**一套签名逻辑，构造 X-Date/Digest/Authorization | 直接复用现有网关的鉴权中间件，**零重复代码** |
-| IP 白名单 | Adapter 的出口 IP 需加入白名单，或走内网绕过 | 天然在网关内部，白名单对 Adapter 无意义 |
-| 接口授权清单 | Adapter 用自己的 appKey 调开放平台，权限是 Adapter 的而不是 B2B 客户的 | 直接拿到 B2B 客户原始 appKey，**权限粒度与 HTTP 完全一致** |
-| 限流 | 两层限流：MCP 层一次 + 开放平台一次 | 一层限流，复用现有策略 |
-
-**关键问题**：方案 A 的 Adapter 用谁的 appKey 调开放平台？
+### 方案 A：MCP Adapter 作为 Kong 的新 Upstream（推荐）
 
 ```
-选项 1：用 Adapter 自己的超级 appKey
-  → 所有 B2B 客户的请求都走同一个 Key
-  → 丧失了每客户独立的权限隔离、限流、审计
-  → 本质上 Adapter 变成了一个"代理人"，安全降级
-
-选项 2：B2B 客户传 appKey+appSecret 给 Adapter，Adapter 代签
-  → Adapter 拿到了客户的 Secret，成为安全单点
-  → 客户 Secret 在 Adapter 内存中，泄露面扩大
-  → 且 Adapter 需要完整重实现签名逻辑
-
-选项 3：B2B 客户自己签好，Adapter 透传
-  → 客户 Agent 需要实现 HMAC 签名 + MCP 协议
-  → 接入门槛比直接调 HTTP 还高，MCP 失去意义
+                        ┌─ /coupon/*  ─▶ openapi-platform (现有, 不动)
+B2B Agent ──▶ Kong ─────┤
+                        └─ /mcp, /sse ─▶ MCP Adapter (新服务)
+                                              │
+                                              │ 内网直连
+                                              ▼
+                                        openapi-platform (后端)
 ```
 
-**结论：方案 A 的鉴权链路怎么设计都会引入额外的安全复杂度或能力退化。**
+### 方案 B：在现有后端服务内部加 MCP 模块
+
+```
+B2B Agent ──▶ Kong ── /mcp ──▶ openapi-platform (改造, 加 MCP 端点)
+```
+
+### 方案 C：Kong Plugin 直接做协议转换
+
+```
+B2B Agent ──▶ Kong (MCP Plugin) ──▶ openapi-platform (不动)
+```
 
 ---
 
-### 2. 网络与性能
+## 2. 为什么方案 A 现在变成了最优解
 
-| | 方案 A | 方案 B |
-|---|---|---|
-| 网络跳数 | Agent → Adapter → Gateway → 后端 (**3 跳**) | Agent → Gateway+MCP → 后端 (**2 跳**) |
-| 额外延迟 | 多一次 HTTPS 往返 (~10-50ms 内网, ~50-200ms 公网) | 进程内调用，无额外延迟 |
-| SSE 长连接 | Adapter 持有 SSE 连接 + 每次 Tool 调用发起新 HTTP | Gateway 直接持有 SSE，Tool 调用走进程内 |
-| 运维 | 两个服务要分别部署、监控、扩容 | 一个服务统一运维 |
+### 之前方案 A 的致命问题——全部被 Kong 解决了
+
+| 之前的问题 | 有 Kong 之后 |
+|---|---|
+| Adapter 需要重写 HMAC 签名逻辑 | **Kong 做验签**，Adapter 收到的是已认证的请求 |
+| B2B 客户的 Secret 暴露给 Adapter | **Secret 只在 Kong 中**，Adapter 永远不接触 |
+| 客户独立的权限隔离丢失 | Kong Consumer + ACL 保持**每客户独立权限** |
+| 客户独立的限流丢失 | Kong Rate Limiting 插件保持**每客户独立限流** |
+| IP 白名单失效 | Kong IP Restriction 插件照常生效 |
+| 审计日志断裂 | Kong 日志插件统一记录 HTTP + MCP 流量 |
+
+**鉴权、权限、限流、审计——全部由 Kong 承担，MCP Adapter 完全不碰。**
+
+### 方案 A 在 Kong 架构下的完整数据流
+
+```
+Step 1: B2B Agent 连接 MCP
+────────────────────────────
+Agent 发起 SSE 连接:
+  GET https://mcp.starbucks.com.cn/sse
+  Headers:
+    X-Date: Mon, 07 Mar 2026 10:00:00 GMT
+    Authorization: hmac username="nio_app_key", algorithm="hmac-sha256",
+                   headers="x-date", signature="xxx"
+
+Step 2: Kong 处理
+────────────────────────────
+  ✅ HMAC Auth 插件: 验证签名 → 识别 Consumer = "nio"
+  ✅ IP Restriction: 检查来源 IP 在蔚来白名单内
+  ✅ Rate Limiting: 检查蔚来的 QPS 配额
+  ✅ ACL: 检查蔚来有权访问 /sse 路由
+  ✅ 注入 Consumer 信息头:
+       X-Consumer-Username: nio
+       X-Consumer-Custom-ID: nio_partner_id
+       X-Consumer-Groups: member-read, coupon-read, cashier-write
+  → 转发到 MCP Adapter upstream
+
+Step 3: MCP Adapter 收到已认证请求
+────────────────────────────
+  从 Kong 注入的头中获取:
+    who:  X-Consumer-Username = "nio"
+    can:  X-Consumer-Groups = ["member-read", "coupon-read", "cashier-write"]
+
+  建立 SSE 长连接，注册 Tool 列表
+  根据 Consumer Groups 决定暴露哪些 Tool（蔚来看不到短信发送 Tool）
+
+Step 4: Agent 调用 Tool
+────────────────────────────
+  Agent → MCP Adapter: call member_query(mobile="138xxxx")
+
+  Adapter 内部:
+    POST http://openapi-platform.internal:8080/crmadapter/account/query
+    Headers:
+      X-Consumer-Username: nio           ← 传递调用者身份
+      X-Internal-Request: true           ← 标记内网调用
+      Content-Type: application/json
+    Body: {"mobile": "138xxxx", "channel": "NIO"}
+
+  → openapi-platform 后端处理，返回 JSON
+  → Adapter 做语义化转换
+  → 返回给 Agent: "该手机号已注册星巴克会员，金星级，142颗星。"
+```
+
+### Adapter 里面到底有什么
+
+```
+MCP Adapter 的职责（有 Kong 之后）：
+
+  ① MCP 协议处理     SSE/Streamable HTTP 连接管理
+                     Tool 注册、参数解析、结果封装
+
+  ② 权限过滤         根据 Kong 传入的 Consumer Groups
+                     动态决定暴露哪些 Tool
+
+  ③ 参数映射         MCP Tool 参数 → HTTP API 请求体
+
+  ④ 语义化转换       JSON 响应 → 自然语言
+
+  ⑤ 没有的：
+     × HMAC 签名          Kong 做了
+     × 限流               Kong 做了
+     × IP 白名单          Kong 做了
+     × 接口授权判断        Kong 做了
+     × 业务逻辑           后端做了
+```
+
+**Adapter 变成了一个纯粹的"协议转换器 + 语义格式化器"，这才是 "薄适配" 的真正含义。**
 
 ---
 
-### 3. Tool 注册与接口同步
-
-| | 方案 A | 方案 B |
-|---|---|---|
-| 新增 HTTP 接口 | 开放平台加完接口后，Adapter 要**同步新增** Tool 定义、参数映射、语义化模板 | 在同一代码库中加一个 Tool 注册 + formatter，**一次提交** |
-| 参数定义 | Adapter 按文档手写参数 Schema，可能与实际不一致 | 可以直接从现有接口的 Swagger 定义**自动生成** Tool Schema |
-| 版本同步风险 | 开放平台改了字段，Adapter 不知道 → 运行时报错 | 同代码库，编译期就能发现 |
-
----
-
-### 4. 技术栈适配
-
-| | 方案 A | 方案 B |
-|---|---|---|
-| 语言选择 | 自由选（Python/TypeScript/Go 都有 MCP SDK） | 受限于现有平台技术栈（大概率 Java/Spring） |
-| MCP SDK 成熟度 | Python/TS SDK 最成熟 | Java MCP SDK 相对较新（Spring AI MCP 2025 年发布） |
-| 团队技能 | 可以用最熟悉的语言 | 需要 Java 团队学习 MCP 协议 |
-
----
-
-### 5. 风险与演进
-
-| | 方案 A | 方案 B |
-|---|---|---|
-| 对现有平台的风险 | **零风险**，完全不碰现有代码 | 需要在生产代码中加新模块，有回归风险 |
-| MCP 协议变更 | Adapter 独立升级，不影响 HTTP 平台 | 需要在平台代码中跟进协议变更 |
-| 渐进式上线 | 灰度简单，Adapter 可以只对部分客户开放 | 需要在 Gateway 层做灰度路由 |
-| 回滚 | 下掉 Adapter 服务即可，HTTP 平台完全不受影响 | 需要从平台代码中回滚 MCP 模块 |
-
----
-
-## 深层分析：MCP 层到底做了什么
-
-把 MCP Adapter 做的事情拆开看：
-
-```
-┌──────────────────────────────────────────────────┐
-│              MCP Adapter 的三个职责                │
-│                                                  │
-│  ① MCP 协议处理                                   │
-│     SSE/Streamable HTTP 连接管理                  │
-│     Tool 注册、参数解析、结果封装                   │
-│     → 纯协议层，与业务无关                         │
-│                                                  │
-│  ② 鉴权适配                                       │
-│     从 MCP 连接提取凭证                            │
-│     构造 HMAC/SM2 签名                            │
-│     → 本质上是重新实现开放平台网关的一部分功能       │
-│                                                  │
-│  ③ 语义化转换                                      │
-│     JSON 响应 → 自然语言                           │
-│     错误码 → 友好提示                              │
-│     → 核心增量价值，无论哪个方案都需要              │
-│                                                  │
-└──────────────────────────────────────────────────┘
-```
-
-方案 A 需要实现 ①②③；方案 B 只需要实现 ①③，② 已经有了。
-
-**② 是最大的分水岭**：如果独立服务，签名逻辑要外部重写一遍；
-如果在平台内部，签名直接复用。
-
----
-
-## 推荐：方案 B 的变体 —— "内部独立模块"
-
-既不是完全独立的服务，也不是侵入式改造现有路由，
-而是在现有开放平台**内部新增一个 MCP 模块**，以插件化方式挂载：
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                  openapi.starbucks.com.cn                     │
-│                                                             │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │                    API Gateway                         │ │
-│  │                                                        │ │
-│  │   /crmadapter/*  ──┐                                   │ │
-│  │   /coupon/*     ──┤   现有 HTTP 路由（不动）             │ │
-│  │   /cashier/*    ──┤   ↓                                │ │
-│  │   /equity/*     ──┘   现有 Handler + HMAC 鉴权          │ │
-│  │                                                        │ │
-│  │   /mcp          ──┐   新增 MCP 路由                     │ │
-│  │   /sse          ──┤   ↓                                │ │
-│  │                    │                                    │ │
-│  └────────────────────┼────────────────────────────────────┘ │
-│                       ▼                                      │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │              MCP Module（新增，独立包）                   │ │
-│  │                                                        │ │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐ │ │
-│  │  │ MCP Protocol │  │ Tool Registry│  │ Semantic      │ │ │
-│  │  │ Handler      │  │ (40 Tools)   │  │ Formatter     │ │ │
-│  │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘ │ │
-│  │         │                 │                  │         │ │
-│  │         └─────── 进程内调用 ─────────────────┘         │ │
-│  │                          │                             │ │
-│  │                          ▼                             │ │
-│  │              复用现有 Handler + 鉴权中间件               │ │
-│  │              （不重写，直接 import 调用）                 │ │
-│  │                                                        │ │
-│  └────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 这个方案的关键设计
-
-**1. MCP 模块是一个独立的 Maven Module / 子包**
-
-```
-openapi-platform/
-├── gateway/                  # 现有网关（不动）
-├── services/                 # 现有业务服务（不动）
-│   ├── member-service/
-│   ├── coupon-service/
-│   └── ...
-├── mcp-module/               # 新增（独立模块）
-│   ├── McpEndpoint.java      # SSE/Streamable HTTP 端点
-│   ├── ToolRegistry.java     # Tool 注册表（自动从 Swagger 生成）
-│   ├── SemanticFormatter.java# 语义化转换
-│   └── McpAuthFilter.java    # 从 MCP 连接头提取凭证，注入到现有鉴权链
-└── pom.xml                   # mcp-module 作为可选依赖引入
-```
-
-**2. 鉴权：零重写，注入到现有链路**
-
-```java
-// McpAuthFilter：不重写签名，而是把 MCP 连接头映射到现有 HTTP 请求头
-// 让现有的 HmacAuthFilter 来做真正的验签
-
-public class McpAuthFilter {
-    // MCP SSE 建连时，从连接头提取 appKey
-    // 每次 Tool 调用时，构造一个内部 HttpServletRequest
-    // 填入 X-Date / Digest / Authorization
-    // 交给现有 HmacAuthFilter 处理
-    // → 如果现有平台已经有签名工具类，直接复用
-}
-```
-
-**3. Tool 注册：从 Swagger 自动生成**
-
-现有平台声明了 Swagger 2.0 规范，可以自动化：
-
-```
-Swagger JSON → 遍历所有 API Path → 生成 MCP Tool 定义
-  - Tool name: 路径转下划线 (如 /coupon/detail → coupon_detail)
-  - Description: Swagger 中的 summary
-  - Parameters: Swagger 中的 request body schema
-  - 只需人工补充语义化 Formatter
-```
-
-**4. 部署：同进程但可独立开关**
+## 3. Kong 路由配置
 
 ```yaml
-# application.yml
-mcp:
-  enabled: true              # 开关，关掉就回到纯 HTTP 模式
-  endpoint: /mcp             # MCP Streamable HTTP 端点
-  sse-endpoint: /sse         # SSE 端点
-  tools:
-    phase: 1                 # 只开放 Phase 1 的只读 Tools
+# Kong 新增 MCP 相关路由（声明式配置）
+
+services:
+  # 现有 HTTP 服务 (不动)
+  - name: openapi-platform
+    url: http://openapi-platform.internal:8080
+    routes:
+      - name: member-api
+        paths: ["/crmadapter"]
+      - name: coupon-api
+        paths: ["/coupon"]
+      - name: cashier-api
+        paths: ["/cashier"]
+      # ... 其余现有路由不动
+
+  # 新增 MCP 服务
+  - name: mcp-adapter
+    url: http://mcp-adapter.internal:9000
+    routes:
+      - name: mcp-sse
+        paths: ["/sse"]
+        protocols: ["https"]
+        strip_path: false
+      - name: mcp-streamable
+        paths: ["/mcp"]
+        protocols: ["https"]
+        strip_path: false
+
+plugins:
+  # MCP 路由复用现有的 HMAC Auth 插件（同一套 Consumer）
+  - name: hmac-auth
+    route: mcp-sse
+    config:
+      hide_credentials: true    # 不把签名头传给 Adapter
+      enforce_on_admin: true
+
+  - name: hmac-auth
+    route: mcp-streamable
+    config:
+      hide_credentials: true
+
+  # SSE 路由需要关闭代理缓冲
+  - name: response-transformer
+    route: mcp-sse
+    config:
+      add:
+        headers:
+          - "X-Accel-Buffering: no"    # 关闭 Nginx 缓冲, SSE 必需
+
+  # 复用现有 Consumer + ACL（零配置）
+  # 蔚来的 Consumer 已经有 hmac-auth credential
+  # 只需在 ACL 中给蔚来加上 "mcp" group 即可访问 MCP 路由
 ```
 
----
-
-## 决策矩阵
-
-| 维度 | 方案 A（独立服务） | 方案 B（内部模块） | 权重 |
-|------|-------------------|-------------------|------|
-| 鉴权复用 | 需重写签名 | 直接复用 | **高** |
-| 安全性 | Secret 暴露面大 | Secret 不出进程 | **高** |
-| 权限隔离 | 退化或复杂 | 与 HTTP 完全一致 | **高** |
-| 对现有平台风险 | 零 | 低（独立模块可关闭） | 中 |
-| 上线速度 | 快（不碰现有代码） | 中（需要现有团队配合） | 中 |
-| 运维成本 | 两个服务 | 一个服务 | 中 |
-| 接口同步成本 | 高（手动同步） | 低（同代码库） | 中 |
-| 技术栈灵活性 | 高（Python/TS） | 低（受限 Java） | 低 |
-| MCP 协议演进 | 快速跟进 | 跟进速度受平台发版节奏影响 | 低 |
+**Kong 侧改动量：加 2 条路由 + 2 个插件配置。零代码改动。**
 
 ---
 
-## 最终建议
+## 4. 三方案终极对比
 
-**推荐方案 B（内部独立模块），理由的优先级：**
+| 维度 | A: Adapter behind Kong | B: 改造现有平台 | C: Kong Plugin |
+|------|----------------------|----------------|----------------|
+| **鉴权** | Kong 做（零重写） | Kong 做（零重写） | Kong 做（零重写） |
+| **权限隔离** | Kong Consumer/ACL | Kong Consumer/ACL | Kong Consumer/ACL |
+| **对现有平台风险** | **零**（不碰现有代码） | 中（要改 Java 代码） | 低 |
+| **技术栈** | 自由（Python/TS） | 受限（Java） | Lua/Go（Kong 插件语言） |
+| **MCP SDK 成熟度** | Python/TS 最成熟 | Java 较新 | 无现成 SDK |
+| **开发速度** | 快（2周） | 中（3-4周） | 慢（需写 Kong 插件） |
+| **独立部署/回滚** | 独立服务，秒级回滚 | 跟平台一起发版 | 跟 Kong 一起发版 |
+| **接口同步** | 需手动同步 | 同代码库 | 需手动同步 |
+| **SSE 长连接** | Adapter 原生支持 | Java 需额外适配 | Kong 需额外适配 |
+| **语义化转换** | 独立迭代，快速调优 | 跟平台一起发版 | 在 Lua 中写，痛苦 |
+| **团队依赖** | MCP 团队独立搞定 | 需现有平台团队配合 | 需 Kong 运维团队配合 |
 
-1. **鉴权是核心** —— 开放平台的鉴权体系（HMAC 签名 + IP 白名单 + 接口授权 + 限流）是多年积累的安全基座，独立服务无论怎么设计都要在这套体系外面再套一层或重写一遍，安全和权限隔离都会打折扣
+---
 
-2. **权限粒度不能丢** —— 每个 B2B 客户有独立的 appKey、独立的接口授权清单、独立的 IP 白名单。内部模块天然继承这些，独立服务要么丢失（用超级 Key），要么增加安全风险（代管客户 Secret）
+## 5. 最终推荐：方案 A
 
-3. **独立模块 ≠ 侵入改造** —— 作为一个可选的 Maven Module 引入，有开关控制，不动现有任何路由和 Handler。回滚就是把开关关掉
+```
+推荐理由（按优先级）：
 
-4. **语义化才是真正的增量** —— 无论哪个方案，语义化转换层（JSON → 自然语言）都要写。方案 B 只需要写这一层，方案 A 还要额外重写鉴权
+1. 鉴权零重写     Kong 全部搞定，Adapter 只做协议转换
+2. 零风险         不碰现有平台一行代码，不碰 Kong 核心配置
+3. 技术栈最优     Python FastMCP，MCP 生态最成熟的 SDK
+4. 团队独立       不依赖现有平台团队排期，2 周可交付
+5. 独立演进       MCP 协议变更时 Adapter 独立升级，不影响 HTTP 平台
+6. 薄适配真谛     Adapter 里只有协议转换 + 语义化，没有鉴权/业务逻辑
 
-**唯一选方案 A 的场景**：现有平台团队完全没有带宽或意愿配合，且 MCP 需要在极短时间内上线做 PoC。这时独立服务可以作为**过渡方案**，但中期仍应回归方案 B。
+Kong 侧改动：
+  - 加 2 条路由（/mcp, /sse → mcp-adapter upstream）
+  - 加 HMAC Auth 插件（复用现有 Consumer）
+  - SSE 路由关闭代理缓冲
+  - 给需要 MCP 接入的 Consumer 加 ACL group
+  → 半天搞定
+```
+
+```
+                                    ┌──────────────────────────┐
+                                    │   Kong 改动量             │
+                                    │                          │
+                                    │   新路由:     2 条        │
+                                    │   新插件配置: 2 个        │
+                                    │   新代码:     0 行        │
+                                    │   现有配置改动: 0         │
+                                    └──────────────────────────┘
+
+                                    ┌──────────────────────────┐
+                                    │   现有平台改动量          │
+                                    │                          │
+                                    │   代码改动:   0 行        │
+                                    │   配置改动:   0           │
+                                    │   发版:       不需要      │
+                                    └──────────────────────────┘
+
+                                    ┌──────────────────────────┐
+                                    │   MCP Adapter（全新服务）  │
+                                    │                          │
+                                    │   职责:                   │
+                                    │   ├── MCP 协议处理        │
+                                    │   ├── Tool 权限过滤       │
+                                    │   ├── 参数映射            │
+                                    │   └── 语义化转换          │
+                                    │                          │
+                                    │   不包含:                 │
+                                    │   ├── × 鉴权签名          │
+                                    │   ├── × 限流              │
+                                    │   ├── × IP 白名单         │
+                                    │   └── × 业务逻辑          │
+                                    └──────────────────────────┘
+```
