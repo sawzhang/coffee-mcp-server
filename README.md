@@ -1,8 +1,8 @@
-# Starbucks China MCP Server
+# Coffee Company MCP Server
 
-星巴克中国 B2B 开放平台 MCP Server —— 让 AI Agent 通过 MCP 协议调用星巴克现有 HTTP 开放平台能力。
+Coffee Company B2B 开放平台 MCP Server —— 让 AI Agent 通过 MCP 协议调用Coffee Company现有 HTTP 开放平台能力。
 
-> 所有 MCP Tool **严格 1:1 映射** `openapi.starbucks.com.cn` 现有 HTTP 接口，不新增业务逻辑。
+> 所有 MCP Tool **严格 1:1 映射** `openapi.coffeecompany.com` 现有 HTTP 接口，不新增业务逻辑。
 > 鉴权由 Kong 网关处理，MCP 层只做协议转换 + 语义化格式化。
 
 ## Quick Start
@@ -12,10 +12,10 @@
 uv sync
 
 # 运行完整 Demo（9 步流程演示）
-uv run sbux demo
+uv run coffee demo
 
 # 交互式模式
-uv run sbux interactive
+uv run coffee interactive
 ```
 
 ## Architecture
@@ -59,14 +59,14 @@ B2B Agent (蔚来/千问/飞猪)
 ## CLI 命令
 
 ```bash
-uv run sbux member 138****1234          # 查会员（手机号）
-uv run sbux member SBUX_M_100001       # 查会员（会员ID）
-uv run sbux tier SBUX_M_100001         # 等级详情
-uv run sbux benefits SBUX_M_100001     # 权益状态
-uv run sbux assets SBUX_M_100001       # 全部资产
-uv run sbux coupon SBX20260301A001     # 券码详情
-uv run sbux equity EQ_2026030100001    # 权益详情
-uv run sbux pay PAY_TOKEN_001          # 支付状态
+uv run coffee member 138****1234          # 查会员（手机号）
+uv run coffee member CC_M_100001       # 查会员（会员ID）
+uv run coffee tier CC_M_100001         # 等级详情
+uv run coffee benefits CC_M_100001     # 权益状态
+uv run coffee assets CC_M_100001       # 全部资产
+uv run coffee coupon CC20260301A001     # 券码详情
+uv run coffee equity EQ_2026030100001    # 权益详情
+uv run coffee pay PAY_TOKEN_001          # 支付状态
 ```
 
 ## 接入 Claude Code / Cursor
@@ -74,9 +74,9 @@ uv run sbux pay PAY_TOKEN_001          # 支付状态
 ```json
 {
   "mcpServers": {
-    "starbucks": {
+    "coffee-company": {
       "command": "uv",
-      "args": ["--directory", "/path/to/starbucks-mcp", "run", "starbucks-mcp"]
+      "args": ["--directory", "/path/to/coffee-company-mcp", "run", "coffee-company-mcp"]
     }
   }
 }
@@ -86,12 +86,12 @@ uv run sbux pay PAY_TOKEN_001          # 支付状态
 
 **蔚来车机 Agent**：
 ```
-车主: "帮我查一下我的星巴克会员等级和可用优惠券"
+车主: "帮我查一下我的Coffee Company会员等级和可用优惠券"
 
 Agent 调用链:
   member_query(mobile="138****1234") → 确认金星会员
-  member_tier(sbux_id="SBUX_M_100001") → 142 颗星，距钻星差 358 颗
-  assets_list(sbux_id="SBUX_M_100001") → 3 张可用券
+  member_tier(member_id="CC_M_100001") → 142 颗星，距钻星差 358 颗
+  assets_list(member_id="CC_M_100001") → 3 张可用券
 ```
 
 ## Docs

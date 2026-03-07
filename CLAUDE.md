@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-MCP adapter for Starbucks China's B2B HTTP Open Platform (`openapi.starbucks.com.cn`). Every MCP Tool maps 1:1 to an existing HTTP API endpoint. In production, this service sits behind Kong which handles all auth (HMAC-SHA256/SM2), rate limiting, IP whitelisting, and ACL. The adapter only does MCP protocol handling + semantic formatting.
+MCP adapter for Coffee Company's B2B HTTP Open Platform (`openapi.coffeecompany.com`). Every MCP Tool maps 1:1 to an existing HTTP API endpoint. In production, this service sits behind Kong which handles all auth (HMAC-SHA256/SM2), rate limiting, IP whitelisting, and ACL. The adapter only does MCP protocol handling + semantic formatting.
 
 Currently in demo mode with mock data. No real backend calls yet.
 
@@ -12,10 +12,10 @@ Currently in demo mode with mock data. No real backend calls yet.
 
 ```bash
 uv sync                              # install deps
-uv run sbux demo                     # 9-step B2B demo (starts MCP server internally)
-uv run sbux interactive              # REPL mode (type 'data' for test IDs, 'help' for commands)
-uv run sbux member SBUX_M_100001     # single tool call
-uv run starbucks-mcp                 # run MCP server (stdio mode, for client integration)
+uv run coffee demo                     # 9-step B2B demo (starts MCP server internally)
+uv run coffee interactive              # REPL mode (type 'data' for test IDs, 'help' for commands)
+uv run coffee member CC_M_100001     # single tool call
+uv run coffee-company-mcp                 # run MCP server (stdio mode, for client integration)
 ```
 
 Run the full MCP protocol test suite (33 cases: tools + resources + edge cases):
@@ -56,8 +56,8 @@ cli.py             Click CLI that spawns server.py as a subprocess via MCP stdio
 
 ## Demo Test Data IDs
 
-Members: `SBUX_M_100001` (Gold/NIO), `SBUX_M_100002` (Green/Fliggy), `SBUX_M_100003` (Diamond/Qwen)
-Coupons: `SBX20260301A001`, `SBX20260301A002`, `SBX20260215B001`
+Members: `CC_M_100001` (Gold/NIO), `CC_M_100002` (Green/Fliggy), `CC_M_100003` (Diamond/Qwen)
+Coupons: `CC20260301A001`, `CC20260301A002`, `CC20260215B001`
 Orders: `ORD_2026030100001`, `ORD_2026021500001`
 Equity: `EQ_2026030100001`, `EQ_2026030100002`, `EQ_2026021500001`
 Pay tokens: `PAY_TOKEN_001` (success), `PAY_TOKEN_002` (pending), `PAY_TOKEN_003` (failed)

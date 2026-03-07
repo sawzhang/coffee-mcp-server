@@ -74,7 +74,7 @@ B2B Agent ──▶ Kong (MCP Plugin) ──▶ openapi-platform (不动)
 Step 1: B2B Agent 连接 MCP
 ────────────────────────────
 Agent 发起 SSE 连接:
-  GET https://mcp.starbucks.com.cn/sse
+  GET https://mcp.coffeecompany.com/sse
   Headers:
     X-Date: Mon, 07 Mar 2026 10:00:00 GMT
     Authorization: hmac username="nio_app_key", algorithm="hmac-sha256",
@@ -115,7 +115,7 @@ Step 4: Agent 调用 Tool
 
   → openapi-platform 后端处理，返回 JSON
   → Adapter 做语义化转换
-  → 返回给 Agent: "该手机号已注册星巴克会员，金星级，142颗星。"
+  → 返回给 Agent: "该手机号已注册Coffee Company会员，金星级，142颗星。"
 ```
 
 ### Adapter 里面到底有什么

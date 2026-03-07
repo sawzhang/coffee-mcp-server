@@ -13,7 +13,7 @@ def format_member(m: dict) -> str:
         f"**会员信息**\n\n"
         f"- 姓名：{m['name']}\n"
         f"- 手机：{m['mobile']}\n"
-        f"- 会员ID：{m['sbux_id']}\n"
+        f"- 会员ID：{m['member_id']}\n"
         f"- 等级：{tier}（{m['member_tier']}）\n"
         f"- 星星余额：{m['star_balance']} 颗\n"
         f"- 等级有效期：至 {m['tier_expire_date']}\n"
@@ -37,8 +37,8 @@ def format_member_tier(t: dict) -> str:
     return "\n".join(lines)
 
 
-def format_member_benefits(sbux_id: str, benefits: dict) -> str:
-    lines = [f"**会员权益状态**（{sbux_id}）\n"]
+def format_member_benefits(member_id: str, benefits: dict) -> str:
+    lines = [f"**会员权益状态**（{member_id}）\n"]
     for key, status in benefits.items():
         name = mock_data.BENEFIT_NAMES.get(key, key)
         status_name = mock_data.BENEFIT_STATUS_NAMES.get(status, str(status))
@@ -105,11 +105,11 @@ def format_equity_detail(e: dict) -> str:
     )
 
 
-def format_assets(sbux_id: str, assets: dict) -> str:
+def format_assets(member_id: str, assets: dict) -> str:
     upp = assets.get("upp_coupons", [])
     ben = assets.get("benefit_coupons", [])
     total = len(upp) + len(ben)
-    lines = [f"**客户资产总览**（{sbux_id}）\n"]
+    lines = [f"**客户资产总览**（{member_id}）\n"]
     lines.append(f"优惠券 {len(upp)} 张 + 权益券 {len(ben)} 张 = 共 {total} 张\n")
 
     if upp:

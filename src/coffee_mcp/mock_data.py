@@ -1,4 +1,4 @@
-"""Mock data simulating Starbucks B2B Open Platform (openapi.starbucks.com.cn) responses.
+"""Mock data simulating Coffee Company B2B Open Platform (openapi.coffeecompany.com) responses.
 
 All data structures mirror the real HTTP API response schemas.
 In production, these functions are replaced by actual HTTP calls to the backend
@@ -45,7 +45,7 @@ CONSUMERS = {
 
 MEMBERS = [
     {
-        "sbux_id": "SBUX_M_100001",
+        "member_id": "CC_M_100001",
         "open_id": "oABC123456789",
         "mobile": "138****1234",
         "name": "张三",
@@ -58,7 +58,7 @@ MEMBERS = [
         "gender": "M",
     },
     {
-        "sbux_id": "SBUX_M_100002",
+        "member_id": "CC_M_100002",
         "open_id": "oDEF987654321",
         "mobile": "139****5678",
         "name": "李四",
@@ -71,7 +71,7 @@ MEMBERS = [
         "gender": "F",
     },
     {
-        "sbux_id": "SBUX_M_100003",
+        "member_id": "CC_M_100003",
         "open_id": "oGHI456789012",
         "mobile": "137****9012",
         "name": "王五",
@@ -89,7 +89,7 @@ TIER_THRESHOLDS = {"GREEN": 0, "GOLD": 125, "DIAMOND": 500}
 TIER_NAMES = {"GREEN": "银星级", "GOLD": "金星级", "DIAMOND": "钻星级"}
 
 MEMBER_BENEFITS = {
-    "SBUX_M_100001": {
+    "CC_M_100001": {
         "welcome_coupon": 3,       # 3=grayed (已领取)
         "birthday_reward": 2,      # 2=active (可领取)
         "tier_upgrade_reward": 3,
@@ -99,7 +99,7 @@ MEMBER_BENEFITS = {
         "refill_benefit": 2,
         "early_access": 2,
     },
-    "SBUX_M_100002": {
+    "CC_M_100002": {
         "welcome_coupon": 2,
         "birthday_reward": 1,
         "tier_upgrade_reward": 1,
@@ -109,7 +109,7 @@ MEMBER_BENEFITS = {
         "refill_benefit": 1,
         "early_access": 1,
     },
-    "SBUX_M_100003": {
+    "CC_M_100003": {
         "welcome_coupon": 3,
         "birthday_reward": 2,
         "tier_upgrade_reward": 3,
@@ -139,7 +139,7 @@ BENEFIT_NAMES = {
 
 COUPONS = [
     {
-        "coupon_code": "SBX20260301A001",
+        "coupon_code": "CC20260301A001",
         "coupon_no": "CN_100001_001",
         "order_id": "ORD_2026030100001",
         "campaign_id": "CAMP_SPRING_2026",
@@ -151,10 +151,10 @@ COUPONS = [
         "redeem_times": 0,
         "max_redeem_times": 1,
         "face_value": 35.0,
-        "member_id": "SBUX_M_100001",
+        "member_id": "CC_M_100001",
     },
     {
-        "coupon_code": "SBX20260301A002",
+        "coupon_code": "CC20260301A002",
         "coupon_no": "CN_100001_002",
         "order_id": "ORD_2026030100001",
         "campaign_id": "CAMP_SPRING_2026",
@@ -166,10 +166,10 @@ COUPONS = [
         "redeem_times": 1,
         "max_redeem_times": 1,
         "face_value": 35.0,
-        "member_id": "SBUX_M_100001",
+        "member_id": "CC_M_100001",
     },
     {
-        "coupon_code": "SBX20260215B001",
+        "coupon_code": "CC20260215B001",
         "coupon_no": "CN_100002_001",
         "order_id": "ORD_2026021500001",
         "campaign_id": "CAMP_CNY_2026",
@@ -181,10 +181,10 @@ COUPONS = [
         "redeem_times": 0,
         "max_redeem_times": 1,
         "face_value": 0.0,
-        "member_id": "SBUX_M_100002",
+        "member_id": "CC_M_100002",
     },
     {
-        "coupon_code": "SBX20260101C001",
+        "coupon_code": "CC20260101C001",
         "coupon_no": "CN_100003_001",
         "order_id": "ORD_2026010100001",
         "campaign_id": "CAMP_VIP_2026",
@@ -196,7 +196,7 @@ COUPONS = [
         "redeem_times": 0,
         "max_redeem_times": 3,
         "face_value": 40.0,
-        "member_id": "SBUX_M_100003",
+        "member_id": "CC_M_100003",
     },
 ]
 
@@ -212,7 +212,7 @@ EQUITIES = [
     {
         "order_id": "EQ_2026030100001",
         "campaign_id": "CAMP_SPRING_2026",
-        "coupon_code": "SBX20260301A001",
+        "coupon_code": "CC20260301A001",
         "coupon_no_with_enc": "ENC_CN_100001_001_xxxxx",
         "status_code": 100,
         "status_name": "发放成功",
@@ -221,12 +221,12 @@ EQUITIES = [
         "binding_time": "2026-03-01 10:30:00",
         "redeem_times": 0,
         "total_amount": 35.0,
-        "member_id": "SBUX_M_100001",
+        "member_id": "CC_M_100001",
     },
     {
         "order_id": "EQ_2026030100002",
         "campaign_id": "CAMP_SPRING_2026",
-        "coupon_code": "SBX20260301A002",
+        "coupon_code": "CC20260301A002",
         "coupon_no_with_enc": "ENC_CN_100001_002_xxxxx",
         "status_code": 100,
         "status_name": "发放成功",
@@ -235,12 +235,12 @@ EQUITIES = [
         "binding_time": "2026-03-01 10:30:05",
         "redeem_times": 1,
         "total_amount": 35.0,
-        "member_id": "SBUX_M_100001",
+        "member_id": "CC_M_100001",
     },
     {
         "order_id": "EQ_2026021500001",
         "campaign_id": "CAMP_CNY_2026",
-        "coupon_code": "SBX20260215B001",
+        "coupon_code": "CC20260215B001",
         "coupon_no_with_enc": "ENC_CN_100002_001_xxxxx",
         "status_code": 100,
         "status_name": "发放成功",
@@ -249,7 +249,7 @@ EQUITIES = [
         "binding_time": "2026-02-15 14:00:00",
         "redeem_times": 0,
         "total_amount": 0.0,
-        "member_id": "SBUX_M_100002",
+        "member_id": "CC_M_100002",
     },
 ]
 
@@ -262,7 +262,7 @@ EQUITY_STATUS_NAMES = {
 # ---------------------------------------------------------------------------
 
 ASSETS = {
-    "SBUX_M_100001": {
+    "CC_M_100001": {
         "upp_coupons": [
             {"coupon_no": "CN_100001_001", "name": "中杯饮品券", "status": "未使用",
              "valid_end": "2026-04-30", "face_value": 35.0},
@@ -274,14 +274,14 @@ ASSETS = {
              "valid_end": "2026-12-31", "face_value": 30.0},
         ],
     },
-    "SBUX_M_100002": {
+    "CC_M_100002": {
         "upp_coupons": [
             {"coupon_no": "CN_100002_001", "name": "买一送一券", "status": "未使用",
              "valid_end": "2026-03-31", "face_value": 0.0},
         ],
         "benefit_coupons": [],
     },
-    "SBUX_M_100003": {
+    "CC_M_100003": {
         "upp_coupons": [
             {"coupon_no": "CN_100003_001", "name": "大杯饮品免费券", "status": "未使用",
              "valid_end": "2026-06-30", "face_value": 40.0},
@@ -322,19 +322,19 @@ def get_consumer(username: str) -> dict | None:
 
 
 def member_query(mobile: str | None = None, open_id: str | None = None,
-                 sbux_id: str | None = None) -> dict | None:
+                 member_id: str | None = None) -> dict | None:
     for m in MEMBERS:
         if mobile and mobile in m["mobile"]:
             return m
         if open_id and m["open_id"] == open_id:
             return m
-        if sbux_id and m["sbux_id"] == sbux_id:
+        if member_id and m["member_id"] == member_id:
             return m
     return None
 
 
-def member_tier(sbux_id: str) -> dict | None:
-    m = member_query(sbux_id=sbux_id)
+def member_tier(member_id: str) -> dict | None:
+    m = member_query(member_id=member_id)
     if not m:
         return None
     current = m["member_tier"]
@@ -353,12 +353,12 @@ def member_tier(sbux_id: str) -> dict | None:
     }
 
 
-def member_benefits(sbux_id: str) -> dict | None:
-    return MEMBER_BENEFITS.get(sbux_id)
+def member_benefits(member_id: str) -> dict | None:
+    return MEMBER_BENEFITS.get(member_id)
 
 
-def member_benefit_list(sbux_id: str) -> list[dict]:
-    assets = ASSETS.get(sbux_id, {})
+def member_benefit_list(member_id: str) -> list[dict]:
+    assets = ASSETS.get(member_id, {})
     result = []
     for c in assets.get("upp_coupons", []):
         result.append({**c, "type": "优惠券"})
@@ -389,8 +389,8 @@ def equity_detail(order_id: str) -> dict | None:
     return equity_query(order_id)
 
 
-def assets_list(sbux_id: str) -> dict | None:
-    return ASSETS.get(sbux_id)
+def assets_list(member_id: str) -> dict | None:
+    return ASSETS.get(member_id)
 
 
 def cashier_pay_query(pay_token: str) -> dict | None:

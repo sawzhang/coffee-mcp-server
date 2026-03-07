@@ -3,26 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Starbucks MCP Server - B2B Open Platform</title>
+  <title>Coffee Company MCP Server - B2B Open Platform</title>
   <style>
     :root {
-      --sbux-green: #00704A;
-      --sbux-green-dark: #1E3932;
-      --sbux-gold: #CBA258;
-      --sbux-cream: #F2F0EB;
-      --sbux-white: #FFFFFF;
-      --sbux-black: #000000;
+      --cc-green: #00704A;
+      --cc-green-dark: #1E3932;
+      --cc-gold: #CBA258;
+      --cc-cream: #F2F0EB;
+      --cc-white: #FFFFFF;
+      --cc-black: #000000;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
-      color: var(--sbux-black);
-      background: var(--sbux-white);
+      color: var(--cc-black);
+      background: var(--cc-white);
       line-height: 1.6;
     }
     .hero {
-      background: linear-gradient(135deg, var(--sbux-green-dark) 0%, var(--sbux-green) 100%);
-      color: var(--sbux-white);
+      background: linear-gradient(135deg, var(--cc-green-dark) 0%, var(--cc-green) 100%);
+      color: var(--cc-white);
       padding: 80px 20px;
       text-align: center;
     }
@@ -31,15 +31,15 @@
       font-size: 1.2rem; opacity: 0.9; max-width: 700px; margin: 0 auto 32px;
     }
     .hero .badge {
-      display: inline-block; background: var(--sbux-gold); color: var(--sbux-green-dark);
+      display: inline-block; background: var(--cc-gold); color: var(--cc-green-dark);
       padding: 6px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; margin: 4px;
     }
     section { max-width: 960px; margin: 0 auto; padding: 60px 20px; }
     section h2 {
-      font-size: 1.8rem; color: var(--sbux-green-dark); margin-bottom: 24px; text-align: center;
+      font-size: 1.8rem; color: var(--cc-green-dark); margin-bottom: 24px; text-align: center;
     }
     .arch-box {
-      background: var(--sbux-cream); border-radius: 12px; padding: 32px;
+      background: var(--cc-cream); border-radius: 12px; padding: 32px;
       margin: 24px 0; font-family: 'SF Mono', 'Fira Code', monospace;
       font-size: 0.82rem; line-height: 1.9; overflow-x: auto; white-space: pre;
     }
@@ -48,13 +48,13 @@
       gap: 16px; margin-top: 24px;
     }
     .tool-card {
-      background: var(--sbux-cream); border-radius: 12px; padding: 20px;
+      background: var(--cc-cream); border-radius: 12px; padding: 20px;
       transition: transform 0.2s, box-shadow 0.2s;
     }
     .tool-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
     .tool-card .tool-name {
       font-family: 'SF Mono', monospace; font-size: 0.85rem;
-      color: var(--sbux-green); font-weight: 600; margin-bottom: 4px;
+      color: var(--cc-green); font-weight: 600; margin-bottom: 4px;
     }
     .tool-card .tool-api {
       font-family: 'SF Mono', monospace; font-size: 0.75rem;
@@ -62,41 +62,41 @@
     }
     .tool-card .tool-desc { font-size: 0.9rem; color: #333; }
     .code-block {
-      background: var(--sbux-green-dark); color: #e0e0e0; border-radius: 12px;
+      background: var(--cc-green-dark); color: #e0e0e0; border-radius: 12px;
       padding: 24px; margin: 16px 0; overflow-x: auto;
       font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85rem; line-height: 1.6;
     }
     .code-block .comment { color: #6a9955; }
-    .code-block .cmd { color: var(--sbux-gold); }
+    .code-block .cmd { color: var(--cc-gold); }
     .code-block .string { color: #ce9178; }
     .steps { display: flex; flex-direction: column; gap: 16px; margin: 24px 0; }
     .step { display: flex; align-items: flex-start; gap: 16px; }
     .step-num {
-      flex-shrink: 0; width: 36px; height: 36px; background: var(--sbux-green); color: white;
+      flex-shrink: 0; width: 36px; height: 36px; background: var(--cc-green); color: white;
       border-radius: 50%; display: flex; align-items: center; justify-content: center;
       font-weight: 700; font-size: 0.9rem;
     }
     .step-content h4 { font-size: 1rem; margin-bottom: 4px; }
     .step-content p { font-size: 0.9rem; color: #555; }
     .scenario {
-      background: var(--sbux-cream); border-radius: 12px; padding: 32px;
+      background: var(--cc-cream); border-radius: 12px; padding: 32px;
       margin: 24px 0; font-size: 0.95rem; line-height: 2;
     }
-    .scenario .user { color: var(--sbux-green-dark); font-weight: 600; }
-    .scenario .agent { color: var(--sbux-green); }
+    .scenario .user { color: var(--cc-green-dark); font-weight: 600; }
+    .scenario .agent { color: var(--cc-green); }
     .scenario .result {
       background: white; border-radius: 8px; padding: 16px; margin-top: 12px;
-      border-left: 4px solid var(--sbux-green);
+      border-left: 4px solid var(--cc-green);
     }
     .phase-table { width: 100%; border-collapse: collapse; margin: 24px 0; }
     .phase-table th {
-      background: var(--sbux-green-dark); color: white; padding: 12px 16px;
+      background: var(--cc-green-dark); color: white; padding: 12px 16px;
       text-align: left; font-size: 0.9rem;
     }
     .phase-table td {
       padding: 10px 16px; border-bottom: 1px solid #eee; font-size: 0.9rem;
     }
-    .phase-table tr:hover { background: var(--sbux-cream); }
+    .phase-table tr:hover { background: var(--cc-cream); }
     .phase-tag {
       display: inline-block; padding: 2px 10px; border-radius: 10px;
       font-size: 0.75rem; font-weight: 600;
@@ -108,22 +108,22 @@
       display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 12px; margin: 24px 0; text-align: center;
     }
-    .client-card { background: var(--sbux-cream); border-radius: 12px; padding: 20px 16px; }
+    .client-card { background: var(--cc-cream); border-radius: 12px; padding: 20px 16px; }
     .client-card .name { font-weight: 600; margin-bottom: 4px; }
-    .client-card .status { font-size: 0.85rem; color: var(--sbux-green); }
+    .client-card .status { font-size: 0.85rem; color: var(--cc-green); }
     footer {
-      background: var(--sbux-green-dark); color: rgba(255,255,255,0.7);
+      background: var(--cc-green-dark); color: rgba(255,255,255,0.7);
       text-align: center; padding: 32px 20px; font-size: 0.85rem;
     }
-    footer a { color: var(--sbux-gold); text-decoration: none; }
+    footer a { color: var(--cc-gold); text-decoration: none; }
   </style>
 </head>
 <body>
 
   <div class="hero">
-    <h1>Starbucks MCP Server</h1>
+    <h1>Coffee Company MCP Server</h1>
     <p class="subtitle">
-      星巴克中国 B2B 开放平台 MCP 接入层 —— 让 AI Agent 通过 MCP 协议调用现有 HTTP 开放平台全部能力
+      Coffee Company B2B 开放平台 MCP 接入层 —— 让 AI Agent 通过 MCP 协议调用现有 HTTP 开放平台全部能力
     </p>
     <span class="badge">MCP Protocol</span>
     <span class="badge">Kong Gateway</span>
@@ -173,7 +173,7 @@ B2B Agent (NIO / Qwen / Fliggy / Custom)
       <div class="tool-card">
         <div class="tool-name">member_query</div>
         <div class="tool-api">POST /crmadapter/account/query</div>
-        <div class="tool-desc">Query member info by mobile, openId, or sbuxId</div>
+        <div class="tool-desc">Query member info by mobile, openId, or memberId</div>
       </div>
       <div class="tool-card">
         <div class="tool-name">member_tier</div>
@@ -259,8 +259,8 @@ B2B Agent (NIO / Qwen / Fliggy / Custom)
       </div>
     </div>
     <div class="code-block">
-<span class="cmd">$</span> git clone https://github.com/sawzhang/starbucks-mcp-server.git
-<span class="cmd">$</span> cd starbucks-mcp-server && uv sync
+<span class="cmd">$</span> git clone https://github.com/sawzhang/coffee-company-mcp.git
+<span class="cmd">$</span> cd coffee-company-mcp && uv sync
     </div>
     <div class="steps">
       <div class="step">
@@ -269,10 +269,10 @@ B2B Agent (NIO / Qwen / Fliggy / Custom)
       </div>
     </div>
     <div class="code-block">
-<span class="cmd">$</span> uv run sbux demo
+<span class="cmd">$</span> uv run coffee demo
 <span class="comment"># Step 1: member_query(mobile="138****1234")</span>
-<span class="comment"># Step 2: member_tier(sbux_id="SBUX_M_100001")</span>
-<span class="comment"># Step 3: member_benefits(sbux_id="SBUX_M_100001")</span>
+<span class="comment"># Step 2: member_tier(member_id="CC_M_100001")</span>
+<span class="comment"># Step 3: member_benefits(member_id="CC_M_100001")</span>
 <span class="comment"># ... through Step 9: cashier_pay_query</span>
     </div>
     <div class="steps">
@@ -294,9 +294,9 @@ B2B Agent (NIO / Qwen / Fliggy / Custom)
     <div class="code-block">
 {
   <span class="string">"mcpServers"</span>: {
-    <span class="string">"starbucks"</span>: {
+    <span class="string">"coffee-company"</span>: {
       <span class="string">"command"</span>: <span class="string">"uv"</span>,
-      <span class="string">"args"</span>: [<span class="string">"--directory"</span>, <span class="string">"/path/to/starbucks-mcp-server"</span>, <span class="string">"run"</span>, <span class="string">"starbucks-mcp"</span>]
+      <span class="string">"args"</span>: [<span class="string">"--directory"</span>, <span class="string">"/path/to/coffee-company-mcp"</span>, <span class="string">"run"</span>, <span class="string">"coffee-company-mcp"</span>]
     }
   }
 }
@@ -308,12 +308,12 @@ B2B Agent (NIO / Qwen / Fliggy / Custom)
     <h2>B2B Scenario: NIO Car Agent</h2>
     <div class="scenario">
       <div class="user">NIO Car Owner:</div>
-      "Check my Starbucks membership and available coupons before I arrive"
+      "Check my Coffee Company membership and available coupons before I arrive"
       <br><br>
       <div class="agent">NIO Agent (via MCP):</div><br>
       Step 1: <code>member_query(mobile="138****1234")</code> &rarr; Gold member, 142 stars<br>
-      Step 2: <code>member_tier(sbux_id="SBUX_M_100001")</code> &rarr; 358 stars to Diamond<br>
-      Step 3: <code>assets_list(sbux_id="SBUX_M_100001")</code> &rarr; 3 available coupons<br>
+      Step 2: <code>member_tier(member_id="CC_M_100001")</code> &rarr; 358 stars to Diamond<br>
+      Step 3: <code>assets_list(member_id="CC_M_100001")</code> &rarr; 3 available coupons<br>
       <div class="result">
         "You're a Gold member with 142 stars. You have 3 coupons available:
         a Tall drink voucher (expires Apr 30), a birthday free drink (expires Mar 31),
@@ -337,11 +337,11 @@ B2B Agent (NIO / Qwen / Fliggy / Custom)
 
   <footer>
     <p>
-      Starbucks MCP Server &mdash; B2B Open Platform |
-      <a href="https://github.com/sawzhang/starbucks-mcp-server">GitHub</a> |
-      <a href="https://github.com/sawzhang/starbucks-mcp-server/blob/main/docs/ARCHITECTURE.md">Architecture Doc</a> |
-      <a href="https://github.com/sawzhang/starbucks-mcp-server/blob/main/docs/DEPLOY_DECISION.md">Deploy Decision</a> |
-      <a href="https://github.com/sawzhang/starbucks-mcp-server/blob/main/docs/proposal.md">Proposal</a>
+      Coffee Company MCP Server &mdash; B2B Open Platform |
+      <a href="https://github.com/sawzhang/coffee-company-mcp">GitHub</a> |
+      <a href="https://github.com/sawzhang/coffee-company-mcp/blob/main/docs/ARCHITECTURE.md">Architecture Doc</a> |
+      <a href="https://github.com/sawzhang/coffee-company-mcp/blob/main/docs/DEPLOY_DECISION.md">Deploy Decision</a> |
+      <a href="https://github.com/sawzhang/coffee-company-mcp/blob/main/docs/proposal.md">Proposal</a>
     </p>
     <p style="margin-top:8px;">MIT License &copy; 2026</p>
   </footer>
