@@ -76,9 +76,19 @@ class _RateLimit:
     max_calls: int
     window_seconds: int
     calls: dict = field(default_factory=lambda: defaultdict(list))
+    _last_cleanup: float = field(default_factory=time.monotonic)
+    _cleanup_interval: float = 300.0  # full cleanup every 5 minutes
 
     def check(self, user_id: str) -> bool:
         now = time.monotonic()
+        # Periodic full cleanup: remove users with no recent calls
+        if now - self._last_cleanup > self._cleanup_interval:
+            stale = [uid for uid, ts in self.calls.items()
+                     if not ts or now - ts[-1] > self.window_seconds]
+            for uid in stale:
+                del self.calls[uid]
+            self._last_cleanup = now
+        # Per-user window eviction
         user_calls = self.calls[user_id]
         self.calls[user_id] = [t for t in user_calls if now - t < self.window_seconds]
         if len(self.calls[user_id]) >= self.max_calls:
