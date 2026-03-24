@@ -488,8 +488,8 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
         if store.get("status") != "营业中":
             return f"门店 {store['name']} 当前{store.get('status', '未知状态')}，无法下单。"
         # Validate confirmation token
-        from . import toc_mock_data
-        token_err = toc_mock_data.validate_confirmation_token(confirmation_token)
+        from .utils import validate_confirmation_token
+        token_err = validate_confirmation_token(confirmation_token)
         if token_err:
             return token_err
         result = adapter.create_order(store_id, items, pickup_type,
