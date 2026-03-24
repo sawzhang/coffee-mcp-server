@@ -481,7 +481,13 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
             return f"取餐方式 '{pickup_type}' 无效，可选: {', '.join(sorted(valid_pickup))}。"
         if pickup_type == "外送" and not address_id:
             return "外送订单必须提供配送地址ID。请先调用 delivery_addresses 获取。"
-        # Validate confirmation token (shared logic in mock_data)
+        # Check store exists and is open
+        store = adapter.store_detail(store_id)
+        if not store:
+            return f"门店 {store_id} 不存在，请先调用 nearby_stores 获取门店。"
+        if store.get("status") != "营业中":
+            return f"门店 {store['name']} 当前{store.get('status', '未知状态')}，无法下单。"
+        # Validate confirmation token
         from . import toc_mock_data
         token_err = toc_mock_data.validate_confirmation_token(confirmation_token)
         if token_err:
