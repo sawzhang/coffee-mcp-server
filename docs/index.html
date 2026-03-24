@@ -3,345 +3,318 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Coffee Company MCP Server - B2B Open Platform</title>
+  <title>Coffee MCP — Multi-Brand AI Ordering Platform</title>
   <style>
     :root {
-      --cc-green: #00704A;
-      --cc-green-dark: #1E3932;
-      --cc-gold: #CBA258;
-      --cc-cream: #F2F0EB;
-      --cc-white: #FFFFFF;
-      --cc-black: #000000;
+      --green: #00704A;
+      --green-dark: #1E3932;
+      --gold: #CBA258;
+      --cream: #F2F0EB;
+      --white: #FFFFFF;
+      --black: #1a1a1a;
+      --gray: #666;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
-      color: var(--cc-black);
-      background: var(--cc-white);
-      line-height: 1.6;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+      color: var(--black); background: var(--white); line-height: 1.7;
     }
     .hero {
-      background: linear-gradient(135deg, var(--cc-green-dark) 0%, var(--cc-green) 100%);
-      color: var(--cc-white);
-      padding: 80px 20px;
-      text-align: center;
+      background: linear-gradient(135deg, var(--green-dark) 0%, var(--green) 100%);
+      color: var(--white); padding: 80px 20px; text-align: center;
     }
-    .hero h1 { font-size: 2.5rem; margin-bottom: 16px; }
-    .hero .subtitle {
-      font-size: 1.2rem; opacity: 0.9; max-width: 700px; margin: 0 auto 32px;
+    .hero h1 { font-size: 2.8rem; margin-bottom: 12px; letter-spacing: -1px; }
+    .hero .subtitle { font-size: 1.15rem; opacity: 0.9; max-width: 680px; margin: 0 auto 28px; }
+    .badge {
+      display: inline-block; padding: 5px 14px; border-radius: 20px;
+      font-size: 0.82rem; font-weight: 600; margin: 3px;
     }
-    .hero .badge {
-      display: inline-block; background: var(--cc-gold); color: var(--cc-green-dark);
-      padding: 6px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; margin: 4px;
-    }
-    section { max-width: 960px; margin: 0 auto; padding: 60px 20px; }
-    section h2 {
-      font-size: 1.8rem; color: var(--cc-green-dark); margin-bottom: 24px; text-align: center;
-    }
-    .arch-box {
-      background: var(--cc-cream); border-radius: 12px; padding: 32px;
-      margin: 24px 0; font-family: 'SF Mono', 'Fira Code', monospace;
-      font-size: 0.82rem; line-height: 1.9; overflow-x: auto; white-space: pre;
-    }
-    .tools-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 16px; margin-top: 24px;
-    }
-    .tool-card {
-      background: var(--cc-cream); border-radius: 12px; padding: 20px;
+    .badge-gold { background: var(--gold); color: var(--green-dark); }
+    .badge-outline { background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3); }
+    section { max-width: 980px; margin: 0 auto; padding: 64px 20px; }
+    section h2 { font-size: 1.8rem; color: var(--green-dark); margin-bottom: 10px; text-align: center; }
+    section .section-sub { text-align: center; color: var(--gray); margin-bottom: 32px; font-size: 0.95rem; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 24px 0; }
+    .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin: 24px 0; }
+    .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin: 24px 0; }
+    @media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--cream); border-radius: 12px; padding: 24px;
       transition: transform 0.2s, box-shadow 0.2s;
     }
-    .tool-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
-    .tool-card .tool-name {
-      font-family: 'SF Mono', monospace; font-size: 0.85rem;
-      color: var(--cc-green); font-weight: 600; margin-bottom: 4px;
-    }
-    .tool-card .tool-api {
-      font-family: 'SF Mono', monospace; font-size: 0.75rem;
-      color: #888; margin-bottom: 8px;
-    }
-    .tool-card .tool-desc { font-size: 0.9rem; color: #333; }
+    .card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+    .card h3 { font-size: 1.05rem; margin-bottom: 6px; color: var(--green-dark); }
+    .card p { font-size: 0.9rem; color: var(--gray); }
+    .card .mono { font-family: 'SF Mono', monospace; font-size: 0.8rem; color: var(--green); }
     .code-block {
-      background: var(--cc-green-dark); color: #e0e0e0; border-radius: 12px;
+      background: var(--green-dark); color: #e0e0e0; border-radius: 12px;
       padding: 24px; margin: 16px 0; overflow-x: auto;
-      font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85rem; line-height: 1.6;
+      font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85rem; line-height: 1.7;
     }
-    .code-block .comment { color: #6a9955; }
-    .code-block .cmd { color: var(--cc-gold); }
-    .code-block .string { color: #ce9178; }
-    .steps { display: flex; flex-direction: column; gap: 16px; margin: 24px 0; }
-    .step { display: flex; align-items: flex-start; gap: 16px; }
-    .step-num {
-      flex-shrink: 0; width: 36px; height: 36px; background: var(--cc-green); color: white;
-      border-radius: 50%; display: flex; align-items: center; justify-content: center;
-      font-weight: 700; font-size: 0.9rem;
+    .code-block .cmd { color: var(--gold); }
+    .code-block .cmt { color: #6a9955; }
+    .code-block .str { color: #ce9178; }
+    .arch-box {
+      background: var(--cream); border-radius: 12px; padding: 28px;
+      font-family: 'SF Mono', monospace; font-size: 0.78rem; line-height: 1.9;
+      overflow-x: auto; white-space: pre;
     }
-    .step-content h4 { font-size: 1rem; margin-bottom: 4px; }
-    .step-content p { font-size: 0.9rem; color: #555; }
-    .scenario {
-      background: var(--cc-cream); border-radius: 12px; padding: 32px;
-      margin: 24px 0; font-size: 0.95rem; line-height: 2;
+    .flow-steps { display: flex; gap: 12px; margin: 24px 0; flex-wrap: wrap; justify-content: center; }
+    .flow-step {
+      background: var(--cream); border-radius: 10px; padding: 16px 20px; text-align: center;
+      min-width: 140px; flex: 1; max-width: 200px;
     }
-    .scenario .user { color: var(--cc-green-dark); font-weight: 600; }
-    .scenario .agent { color: var(--cc-green); }
-    .scenario .result {
-      background: white; border-radius: 8px; padding: 16px; margin-top: 12px;
-      border-left: 4px solid var(--cc-green);
+    .flow-step .num {
+      width: 28px; height: 28px; background: var(--green); color: white; border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 0.8rem; margin-bottom: 6px;
     }
-    .phase-table { width: 100%; border-collapse: collapse; margin: 24px 0; }
-    .phase-table th {
-      background: var(--cc-green-dark); color: white; padding: 12px 16px;
-      text-align: left; font-size: 0.9rem;
+    .flow-step .label { font-size: 0.85rem; font-weight: 600; }
+    .flow-step .desc { font-size: 0.78rem; color: var(--gray); margin-top: 2px; }
+    .arrow { display: flex; align-items: center; color: var(--green); font-size: 1.2rem; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 0.9rem; }
+    th { background: var(--green-dark); color: white; padding: 10px 14px; text-align: left; }
+    td { padding: 10px 14px; border-bottom: 1px solid #eee; }
+    tr:hover { background: var(--cream); }
+    .risk-tag { display: inline-block; padding: 2px 8px; border-radius: 8px; font-size: 0.75rem; font-weight: 600; }
+    .risk-l0 { background: #d4edda; color: #155724; }
+    .risk-l1 { background: #d1ecf1; color: #0c5460; }
+    .risk-l2 { background: #fff3cd; color: #856404; }
+    .risk-l3 { background: #f8d7da; color: #721c24; }
+    .highlight-box {
+      background: linear-gradient(135deg, #f0faf5 0%, var(--cream) 100%);
+      border-left: 4px solid var(--green); border-radius: 0 12px 12px 0;
+      padding: 24px 28px; margin: 24px 0;
     }
-    .phase-table td {
-      padding: 10px 16px; border-bottom: 1px solid #eee; font-size: 0.9rem;
-    }
-    .phase-table tr:hover { background: var(--cc-cream); }
-    .phase-tag {
-      display: inline-block; padding: 2px 10px; border-radius: 10px;
-      font-size: 0.75rem; font-weight: 600;
-    }
-    .phase-1 { background: #d4edda; color: #155724; }
-    .phase-2 { background: #fff3cd; color: #856404; }
-    .phase-3 { background: #f8d7da; color: #721c24; }
-    .clients-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 12px; margin: 24px 0; text-align: center;
-    }
-    .client-card { background: var(--cc-cream); border-radius: 12px; padding: 20px 16px; }
-    .client-card .name { font-weight: 600; margin-bottom: 4px; }
-    .client-card .status { font-size: 0.85rem; color: var(--cc-green); }
+    .highlight-box p { font-size: 0.95rem; }
     footer {
-      background: var(--cc-green-dark); color: rgba(255,255,255,0.7);
+      background: var(--green-dark); color: rgba(255,255,255,0.7);
       text-align: center; padding: 32px 20px; font-size: 0.85rem;
     }
-    footer a { color: var(--cc-gold); text-decoration: none; }
+    footer a { color: var(--gold); text-decoration: none; }
   </style>
 </head>
 <body>
 
   <div class="hero">
-    <h1>Coffee Company MCP Server</h1>
+    <h1>Coffee MCP</h1>
     <p class="subtitle">
-      Coffee Company B2B 开放平台 MCP 接入层 —— 让 AI Agent 通过 MCP 协议调用现有 HTTP 开放平台全部能力
+      Multi-brand MCP platform for coffee & tea ordering.<br>
+      Let any AI assistant discover, order from, and interact with your brand.
     </p>
-    <span class="badge">MCP Protocol</span>
-    <span class="badge">Kong Gateway</span>
-    <span class="badge">10 Tools (Phase 1)</span>
-    <span class="badge">B2B</span>
-    <span class="badge">Zero Platform Changes</span>
+    <span class="badge badge-gold">21 ToC Tools</span>
+    <span class="badge badge-gold">10 B2B Tools</span>
+    <span class="badge badge-outline">Multi-Brand YAML</span>
+    <span class="badge badge-outline">L0-L3 Security</span>
+    <span class="badge badge-outline">122 Tests</span>
+    <span class="badge badge-outline">Brand Init CLI</span>
   </div>
+
+  <!-- Value Prop -->
+  <section>
+    <h2>Why Coffee MCP?</h2>
+    <p class="section-sub">When users ask AI for coffee, only brands with MCP are reachable.</p>
+    <div class="grid-2">
+      <div class="card">
+        <h3>For Brands</h3>
+        <p>Connect to every AI assistant in 2-3 weeks. Zero MCP knowledge needed. Choose your category preset (coffee/tea/juice/bakery), configure a YAML file, implement your API adapter.</p>
+      </div>
+      <div class="card">
+        <h3>For Consumers</h3>
+        <p>Say "order me an oat latte" to any AI. It finds your nearest store, checks coupons, calculates price, and creates the order — all through natural conversation.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Consumer Journey -->
+  <section>
+    <h2>Consumer Ordering Flow</h2>
+    <p class="section-sub">8 steps from "I want coffee" to "order placed"</p>
+    <div class="flow-steps">
+      <div class="flow-step"><div class="num">1</div><div class="label">Time</div><div class="desc">now_time_info</div></div>
+      <div class="arrow">&rarr;</div>
+      <div class="flow-step"><div class="num">2</div><div class="label">Find Store</div><div class="desc">nearby_stores</div></div>
+      <div class="arrow">&rarr;</div>
+      <div class="flow-step"><div class="num">3</div><div class="label">Menu</div><div class="desc">browse_menu</div></div>
+      <div class="arrow">&rarr;</div>
+      <div class="flow-step"><div class="num">4</div><div class="label">Customize</div><div class="desc">drink_detail</div></div>
+      <div class="arrow">&rarr;</div>
+      <div class="flow-step"><div class="num">5</div><div class="label">Coupons</div><div class="desc">store_coupons</div></div>
+      <div class="arrow">&rarr;</div>
+      <div class="flow-step"><div class="num">6</div><div class="label">Price</div><div class="desc">calculate_price</div></div>
+      <div class="arrow">&rarr;</div>
+      <div class="flow-step"><div class="num">7</div><div class="label">Order</div><div class="desc">create_order</div></div>
+      <div class="arrow">&rarr;</div>
+      <div class="flow-step"><div class="num">8</div><div class="label">Status</div><div class="desc">order_status</div></div>
+    </div>
+  </section>
 
   <!-- Architecture -->
   <section>
     <h2>Architecture</h2>
-    <div class="arch-box">
-B2B Agent (NIO / Qwen / Fliggy / Custom)
-    |  MCP Protocol (SSE / Streamable HTTP)
-    v
-+-------------- Kong (existing) ---------------+
-|                                               |
-|  HMAC Auth   IP Whitelist   Rate Limit   ACL  |  <-- reuse existing B2B credentials
-|                                               |
-|  /sse, /mcp --> MCP Adapter (new service)     |  <-- 2 new routes
-|  /coupon/*  --> openapi-platform (unchanged)  |
-|  /cashier/* --> openapi-platform (unchanged)  |
-+-------------------+--+------------------------+
-                    |  |
-      +-------------+  +------------+
-      v                              v
-  MCP Adapter                  openapi-platform
-  (this project)               (zero changes)
-  - MCP protocol               - existing HTTP APIs
-  - tool registry               - business logic
-  - semantic formatting          - data layer
-  - permission filtering
-      |
-      | internal network
-      v
-  openapi-platform backend
-    </div>
-    <p style="text-align:center;color:#666;margin-top:12px;">
-      Kong handles auth/rate-limiting/ACL. MCP Adapter only does protocol conversion + semantic formatting.
-    </p>
+    <p class="section-sub">Config-driven multi-brand, adapter pattern for backend integration</p>
+    <div class="arch-box">User &rarr; AI Assistant &rarr; MCP Protocol &rarr; Gateway (OAuth + Rate Limit)
+                                                      |
+                                    +-----------------+-----------------+
+                                    |                                   |
+                              B2B Server                         ToC Server (factory)
+                              10 tools                           21 tools &middot; L0-L3
+                              Kong HMAC                          Multi-brand YAML
+                                                                        |
+                                                           brands/&lt;id&gt;/brand.yaml
+                                                                        |
+                                                               BrandAdapter (ABC)
+                                                           /                    \
+                                                 DemoAdapter              YourBrandAdapter
+                                                 (mock data)             (HTTP &rarr; your API)</div>
   </section>
 
-  <!-- Tools -->
+  <!-- Security -->
   <section>
-    <h2>Phase 1 Tools (Read-Only)</h2>
-    <div class="tools-grid">
-      <div class="tool-card">
-        <div class="tool-name">member_query</div>
-        <div class="tool-api">POST /crmadapter/account/query</div>
-        <div class="tool-desc">Query member info by mobile, openId, or memberId</div>
-      </div>
-      <div class="tool-card">
-        <div class="tool-name">member_tier</div>
-        <div class="tool-api">POST /crmadapter/account/memberTier</div>
-        <div class="tool-desc">Member tier details: stars, expiry, next-tier gap</div>
-      </div>
-      <div class="tool-card">
-        <div class="tool-name">member_benefits</div>
-        <div class="tool-api">POST /crmadapter/customers/getBenefits</div>
-        <div class="tool-desc">8 benefit statuses: welcome, birthday, upgrade rewards</div>
-      </div>
-      <div class="tool-card">
-        <div class="tool-name">member_benefit_list</div>
-        <div class="tool-api">POST /crmadapter/asset/coupon/getBenefitList</div>
-        <div class="tool-desc">List all coupons and benefit vouchers for a member</div>
-      </div>
-      <div class="tool-card">
-        <div class="tool-name">coupon_query</div>
-        <div class="tool-api">POST /coupon/query</div>
-        <div class="tool-desc">Check if coupons were generated for an order</div>
-      </div>
-      <div class="tool-card">
-        <div class="tool-name">coupon_detail</div>
-        <div class="tool-api">POST /coupon/detail</div>
-        <div class="tool-desc">Coupon details: status, face value, redemption count</div>
-      </div>
-      <div class="tool-card">
-        <div class="tool-name">equity_query</div>
-        <div class="tool-api">POST /equity/query</div>
-        <div class="tool-desc">Check equity/benefit distribution status</div>
-      </div>
-      <div class="tool-card">
-        <div class="tool-name">equity_detail</div>
-        <div class="tool-api">POST /equity/detail</div>
-        <div class="tool-desc">Full equity details: amount, validity, redemption</div>
-      </div>
-      <div class="tool-card">
-        <div class="tool-name">assets_list</div>
-        <div class="tool-api">POST /assets/list</div>
-        <div class="tool-desc">All customer assets: UPP coupons + benefit coupons</div>
-      </div>
-      <div class="tool-card">
-        <div class="tool-name">cashier_pay_query</div>
-        <div class="tool-api">POST /cashier/payQuery</div>
-        <div class="tool-desc">Payment status: in-progress / success / failed</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Phased Rollout -->
-  <section>
-    <h2>Phased Rollout</h2>
-    <table class="phase-table">
-      <tr><th>Phase</th><th>Tools</th><th>Type</th><th>Timeline</th></tr>
+    <h2>Security: L0-L3 Risk Levels</h2>
+    <p class="section-sub">Every tool is classified by risk. Higher risk = stricter controls.</p>
+    <table>
+      <tr><th>Level</th><th>Rate Limit</th><th>Protection</th><th>Example Tools</th></tr>
       <tr>
-        <td><span class="phase-tag phase-1">Phase 1</span></td>
-        <td>member_query, member_tier, member_benefits, member_benefit_list, coupon_query, coupon_detail, equity_query, equity_detail, assets_list, cashier_pay_query</td>
-        <td>Read-only</td>
-        <td>Week 1-2</td>
+        <td><span class="risk-tag risk-l0">L0</span> Public Read</td>
+        <td>60/min per IP</td><td>None needed</td>
+        <td>browse_menu, nearby_stores, nutrition_info</td>
       </tr>
       <tr>
-        <td><span class="phase-tag phase-2">Phase 2</span></td>
-        <td>member_register, member_bind, coupon_create, coupon_claim, equity_send, benefit_issue, srkit_send</td>
-        <td>Write</td>
-        <td>Week 3-5</td>
+        <td><span class="risk-tag risk-l1">L1</span> Auth Read</td>
+        <td>30/min per user</td><td>OAuth token</td>
+        <td>my_account, my_coupons, my_orders</td>
       </tr>
       <tr>
-        <td><span class="phase-tag phase-3">Phase 3</span></td>
-        <td>cashier_checkout, order_push, stars_lock, stars_redeem, coupon_cancel, equity_cancel, order_refund</td>
-        <td>Transaction</td>
-        <td>Week 6-8</td>
+        <td><span class="risk-tag risk-l2">L2</span> Auth Write</td>
+        <td>5/hour per user</td><td>Rate limit</td>
+        <td>claim_all_coupons, create_address</td>
+      </tr>
+      <tr>
+        <td><span class="risk-tag risk-l3">L3</span> High Risk</td>
+        <td>10/day per user</td><td>Confirmation token + Idempotency key</td>
+        <td>create_order, stars_redeem</td>
       </tr>
     </table>
+  </section>
+
+  <!-- Brand Onboarding -->
+  <section>
+    <h2>Brand Onboarding</h2>
+    <p class="section-sub">From zero to AI-discoverable in three steps</p>
+    <div class="grid-3">
+      <div class="card">
+        <h3>1. brand-init (5 min)</h3>
+        <p class="mono">uv run brand-init</p>
+        <p>Choose category preset (coffee/tea/juice/bakery). Answer 3 questions. Generates brand.yaml.</p>
+      </div>
+      <div class="card">
+        <h3>2. brand-onboard (30 min)</h3>
+        <p class="mono">/brand-onboard &lt;api-docs&gt;</p>
+        <p>AI reads your API docs, maps 21 methods, generates adapter.py + tests.</p>
+      </div>
+      <div class="card">
+        <h3>3. Deploy & Test</h3>
+        <p class="mono">BRAND=xxx uv run coffee-company-toc</p>
+        <p>Start MCP server. Connect AI assistants. Verify end-to-end.</p>
+      </div>
+    </div>
+    <div class="highlight-box">
+      <p><strong>Zero code needed for step 1.</strong> The platform handles security (L0-L3 rate limiting, confirmation tokens, idempotency), PII masking, parameter validation, and markdown formatting. Your adapter only maps API fields.</p>
+    </div>
+  </section>
+
+  <!-- Presets -->
+  <section>
+    <h2>Category Presets</h2>
+    <p class="section-sub">90% of config auto-generated from your brand category</p>
+    <div class="grid-4">
+      <div class="card">
+        <h3>&#9749; Coffee</h3>
+        <p>tall/grande/venti<br>6 milk options<br>Espresso shots + syrups</p>
+      </div>
+      <div class="card">
+        <h3>&#129379; Tea</h3>
+        <p>regular/large<br>Boba, pudding, taro<br>5 sweetness levels</p>
+      </div>
+      <div class="card">
+        <h3>&#127865; Juice</h3>
+        <p>regular/large<br>Yogurt, coconut milk<br>Chia seeds, nata</p>
+      </div>
+      <div class="card">
+        <h3>&#127856; Bakery</h3>
+        <p>single/combo<br>Gift box packaging<br>No milk/sweetness</p>
+      </div>
+    </div>
   </section>
 
   <!-- Quick Start -->
   <section>
     <h2>Quick Start</h2>
-    <div class="steps">
-      <div class="step">
-        <div class="step-num">1</div>
-        <div class="step-content"><h4>Clone & Install</h4><p>Requires uv + Python 3.13</p></div>
-      </div>
-    </div>
     <div class="code-block">
-<span class="cmd">$</span> git clone https://github.com/sawzhang/coffee-company-mcp.git
-<span class="cmd">$</span> cd coffee-company-mcp && uv sync
-    </div>
-    <div class="steps">
-      <div class="step">
-        <div class="step-num">2</div>
-        <div class="step-content"><h4>Run the Demo</h4><p>9-step B2B scenario: member -> tier -> benefits -> coupons -> equity -> assets -> payment</p></div>
-      </div>
-    </div>
-    <div class="code-block">
-<span class="cmd">$</span> uv run coffee demo
-<span class="comment"># Step 1: member_query(mobile="138****1234")</span>
-<span class="comment"># Step 2: member_tier(member_id="CC_M_100001")</span>
-<span class="comment"># Step 3: member_benefits(member_id="CC_M_100001")</span>
-<span class="comment"># ... through Step 9: cashier_pay_query</span>
-    </div>
-    <div class="steps">
-      <div class="step">
-        <div class="step-num">3</div>
-        <div class="step-content"><h4>Run Tests</h4><p>33 real MCP protocol tests (stdio client, tools + resources + edge cases)</p></div>
-      </div>
-    </div>
-    <div class="code-block">
-<span class="cmd">$</span> uv run python tests/test_mcp_real.py
-<span class="comment"># Total: 33  |  Passed: 33  |  Failed: 0</span>
-    </div>
-    <div class="steps">
-      <div class="step">
-        <div class="step-num">4</div>
-        <div class="step-content"><h4>Connect AI Agent</h4><p>Add to Claude Code or Cursor MCP config</p></div>
-      </div>
-    </div>
-    <div class="code-block">
-{
-  <span class="string">"mcpServers"</span>: {
-    <span class="string">"coffee-company"</span>: {
-      <span class="string">"command"</span>: <span class="string">"uv"</span>,
-      <span class="string">"args"</span>: [<span class="string">"--directory"</span>, <span class="string">"/path/to/coffee-company-mcp"</span>, <span class="string">"run"</span>, <span class="string">"coffee-company-mcp"</span>]
-    }
-  }
-}
-    </div>
-  </section>
+<span class="cmt"># Install</span>
+<span class="cmd">$</span> git clone https://github.com/sawzhang/coffee-mcp.git
+<span class="cmd">$</span> cd coffee-mcp && uv sync
 
-  <!-- Scenario -->
-  <section>
-    <h2>B2B Scenario: NIO Car Agent</h2>
-    <div class="scenario">
-      <div class="user">NIO Car Owner:</div>
-      "Check my Coffee Company membership and available coupons before I arrive"
-      <br><br>
-      <div class="agent">NIO Agent (via MCP):</div><br>
-      Step 1: <code>member_query(mobile="138****1234")</code> &rarr; Gold member, 142 stars<br>
-      Step 2: <code>member_tier(member_id="CC_M_100001")</code> &rarr; 358 stars to Diamond<br>
-      Step 3: <code>assets_list(member_id="CC_M_100001")</code> &rarr; 3 available coupons<br>
-      <div class="result">
-        "You're a Gold member with 142 stars. You have 3 coupons available:
-        a Tall drink voucher (expires Apr 30), a birthday free drink (expires Mar 31),
-        and a friend referral reward worth ¥30."
-      </div>
+<span class="cmt"># Run ToC server (consumer ordering)</span>
+<span class="cmd">$</span> uv run coffee-company-toc
+
+<span class="cmt"># Run with HTTP transport (for OpenClaw / remote clients)</span>
+<span class="cmd">$</span> uv run coffee-company-toc-http
+
+<span class="cmt"># Initialize a new brand</span>
+<span class="cmd">$</span> uv run brand-init
+
+<span class="cmt"># Run all tests (122 total)</span>
+<span class="cmd">$</span> uv run python tests/test_toc_mcp.py   <span class="cmt"># 89 passed</span>
+<span class="cmd">$</span> uv run python tests/test_mcp_real.py   <span class="cmt"># 33 passed</span>
     </div>
   </section>
 
   <!-- Compatible Clients -->
   <section>
     <h2>Compatible MCP Clients</h2>
-    <div class="clients-grid">
-      <div class="client-card"><div class="name">Claude Code</div><div class="status">Native</div></div>
-      <div class="client-card"><div class="name">Cursor</div><div class="status">Native</div></div>
-      <div class="client-card"><div class="name">Claude Desktop</div><div class="status">Native</div></div>
-      <div class="client-card"><div class="name">NIO Car Agent</div><div class="status">B2B</div></div>
-      <div class="client-card"><div class="name">Qwen Agent</div><div class="status">B2B</div></div>
-      <div class="client-card"><div class="name">Custom Agent</div><div class="status">MCP SDK</div></div>
+    <div class="grid-4">
+      <div class="card" style="text-align:center"><h3>Claude Code</h3><p>stdio</p></div>
+      <div class="card" style="text-align:center"><h3>Cursor</h3><p>stdio</p></div>
+      <div class="card" style="text-align:center"><h3>OpenClaw</h3><p>HTTP</p></div>
+      <div class="card" style="text-align:center"><h3>Claude Desktop</h3><p>stdio</p></div>
+      <div class="card" style="text-align:center"><h3>ChatGPT</h3><p>HTTP</p></div>
+      <div class="card" style="text-align:center"><h3>Doubao / Qwen</h3><p>HTTP</p></div>
+      <div class="card" style="text-align:center"><h3>Car Agents</h3><p>B2B</p></div>
+      <div class="card" style="text-align:center"><h3>Custom</h3><p>MCP SDK</p></div>
+    </div>
+  </section>
+
+  <!-- Docs -->
+  <section>
+    <h2>Documentation</h2>
+    <div class="grid-2">
+      <div class="card">
+        <h3><a href="https://github.com/sawzhang/coffee-mcp/blob/main/docs/BRAND_INTEGRATION_GUIDE.md">Brand Integration Guide</a></h3>
+        <p>Step-by-step: YAML config, adapter template, return value formats, testing checklist</p>
+      </div>
+      <div class="card">
+        <h3><a href="https://github.com/sawzhang/coffee-mcp/blob/main/docs/TOC_MCP_PLATFORM_DESIGN.md">Platform Design</a></h3>
+        <p>Full architecture, auth flow, competitive analysis (McDonald's MCP, Qmai)</p>
+      </div>
+      <div class="card">
+        <h3><a href="https://github.com/sawzhang/coffee-mcp/blob/main/docs/TOC_SECURITY.md">Security Architecture</a></h3>
+        <p>L0-L3 threat model, rate limiting, confirmation tokens, PII masking</p>
+      </div>
+      <div class="card">
+        <h3><a href="https://github.com/sawzhang/coffee-mcp/blob/main/docs/MCP_API_DESIGN_GUIDE.md">API Design Guide</a></h3>
+        <p>MCP tool design principles: descriptions as routers, minimal params, semantic output</p>
+      </div>
     </div>
   </section>
 
   <footer>
     <p>
-      Coffee Company MCP Server &mdash; B2B Open Platform |
-      <a href="https://github.com/sawzhang/coffee-company-mcp">GitHub</a> |
-      <a href="https://github.com/sawzhang/coffee-company-mcp/blob/main/docs/ARCHITECTURE.md">Architecture Doc</a> |
-      <a href="https://github.com/sawzhang/coffee-company-mcp/blob/main/docs/DEPLOY_DECISION.md">Deploy Decision</a> |
-      <a href="https://github.com/sawzhang/coffee-company-mcp/blob/main/docs/proposal.md">Proposal</a>
+      Coffee MCP &mdash; Multi-Brand AI Ordering Platform |
+      <a href="https://github.com/sawzhang/coffee-mcp">GitHub</a> |
+      <a href="https://github.com/sawzhang/coffee-mcp/blob/main/docs/BRAND_INTEGRATION_GUIDE.md">Brand Integration</a> |
+      <a href="https://github.com/sawzhang/coffee-mcp/blob/main/CLAUDE.md">CLAUDE.md</a>
     </p>
     <p style="margin-top:8px;">MIT License &copy; 2026</p>
   </footer>
