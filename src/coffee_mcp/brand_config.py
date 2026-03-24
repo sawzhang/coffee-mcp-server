@@ -166,6 +166,18 @@ def load_brand_config(brand_id: str) -> BrandConfig:
     with open(yaml_path) as f:
         raw = yaml.safe_load(f)
 
+    if not raw or not isinstance(raw, dict):
+        raise ValueError(f"Invalid brand config: {yaml_path} is empty or not a YAML mapping.")
+
+    # Validate required fields
+    required = ["brand_name", "server_name", "instructions"]
+    missing = [f for f in required if f not in raw]
+    if missing:
+        raise ValueError(
+            f"Brand config {yaml_path} missing required fields: {', '.join(missing)}\n"
+            f"See brands/coffee_company/brand.yaml for a complete example."
+        )
+
     # Parse validation config
     val_raw = raw.get("validation", {})
     validation = ValidationConfig(

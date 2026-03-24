@@ -76,9 +76,19 @@ class _RateLimit:
     max_calls: int
     window_seconds: int
     calls: dict = field(default_factory=lambda: defaultdict(list))
+    _last_cleanup: float = field(default_factory=time.monotonic)
+    _cleanup_interval: float = 300.0  # full cleanup every 5 minutes
 
     def check(self, user_id: str) -> bool:
         now = time.monotonic()
+        # Periodic full cleanup: remove users with no recent calls
+        if now - self._last_cleanup > self._cleanup_interval:
+            stale = [uid for uid, ts in self.calls.items()
+                     if not ts or now - ts[-1] > self.window_seconds]
+            for uid in stale:
+                del self.calls[uid]
+            self._last_cleanup = now
+        # Per-user window eviction
         user_calls = self.calls[user_id]
         self.calls[user_id] = [t for t in user_calls if now - t < self.window_seconds]
         if len(self.calls[user_id]) >= self.max_calls:
@@ -109,12 +119,15 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
 
     rate_limits = _build_rate_limits(config)
     val = config.validation
+    features = config.features
     phone_re = re.compile(val.phone_pattern)
     valid_sizes = set(val.valid_sizes)
     valid_milks = set(val.valid_milks)
     valid_extras = set(val.valid_extras)
     valid_pickup = set(val.valid_pickup)
     default_user = config.default_user_id
+
+    _FEATURE_NOT_AVAILABLE = "该品牌暂未开通此功能。"
 
     def _check_rate_limit(tool_name: str, user_id: str = default_user) -> str | None:
         level = _TOOL_RISK.get(tool_name, RiskLevel.L1_AUTH_READ)
@@ -323,6 +336,8 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
         Args:
             category: 可选分类筛选
         """
+        if not features.get("stars_mall", True):
+            return _FEATURE_NOT_AVAILABLE
         products = adapter.stars_mall_products(category)
         user = adapter.get_current_user(default_user)
         user_stars = user["star_balance"] if user else 0
@@ -335,6 +350,8 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
         Args:
             product_code: 积分商品编号
         """
+        if not features.get("stars_mall", True):
+            return _FEATURE_NOT_AVAILABLE
         product = adapter.stars_product_detail(product_code)
         if not product:
             return f"未找到积分商品 {product_code}。"
@@ -355,6 +372,8 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
             product_code: 积分商品编号
             idempotency_key: 幂等键，防重复兑换
         """
+        if not features.get("stars_mall", True):
+            return _FEATURE_NOT_AVAILABLE
         if err := _check_rate_limit("stars_redeem"):
             return err
         result = adapter.stars_redeem(product_code, default_user,
@@ -462,9 +481,15 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
             return f"取餐方式 '{pickup_type}' 无效，可选: {', '.join(sorted(valid_pickup))}。"
         if pickup_type == "外送" and not address_id:
             return "外送订单必须提供配送地址ID。请先调用 delivery_addresses 获取。"
-        # Validate confirmation token (shared logic in mock_data)
-        from . import toc_mock_data
-        token_err = toc_mock_data.validate_confirmation_token(confirmation_token)
+        # Check store exists and is open
+        store = adapter.store_detail(store_id)
+        if not store:
+            return f"门店 {store_id} 不存在，请先调用 nearby_stores 获取门店。"
+        if store.get("status") != "营业中":
+            return f"门店 {store['name']} 当前{store.get('status', '未知状态')}，无法下单。"
+        # Validate confirmation token
+        from .utils import validate_confirmation_token
+        token_err = validate_confirmation_token(confirmation_token)
         if token_err:
             return token_err
         result = adapter.create_order(store_id, items, pickup_type,

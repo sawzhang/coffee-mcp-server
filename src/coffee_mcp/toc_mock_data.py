@@ -6,14 +6,49 @@ replaced by HTTP calls to the consumer API behind user OAuth authentication.
 The default mock user is CC_M_100001 (张三, 金星级).
 """
 
-import hashlib
 import time
 import uuid
 
-from . import mock_data
-
 # Default mock user (simulates logged-in consumer)
 DEFAULT_USER_ID = "CC_M_100001"
+
+# ---------------------------------------------------------------------------
+# ToC User Data (decoupled from B2B mock_data)
+# In production: consumer backend resolves user from OAuth token
+# ---------------------------------------------------------------------------
+
+TIER_NAMES = {"GREEN": "银星级", "GOLD": "金星级", "DIAMOND": "钻星级"}
+TIER_THRESHOLDS = {"GREEN": 0, "GOLD": 125, "DIAMOND": 500}
+
+TOC_USERS = {
+    "CC_M_100001": {
+        "member_id": "CC_M_100001",
+        "name": "张三",
+        "member_tier": "GOLD",
+        "star_balance": 142,
+        "tier_expire_date": "2026-12-31",
+        "registration_date": "2024-06-15",
+    },
+}
+
+TOC_USER_BENEFITS = {
+    "CC_M_100001": {
+        "welcome_coupon": 3, "birthday_reward": 2, "tier_upgrade_reward": 3,
+        "free_drink_coupon": 2, "food_coupon": 1, "customization_coupon": 2,
+        "refill_benefit": 2, "early_access": 2,
+    },
+}
+
+TOC_USER_COUPONS = {
+    "CC_M_100001": [
+        {"coupon_no": "CN_100001_001", "name": "中杯饮品券", "type": "优惠券",
+         "status": "未使用", "valid_end": "2026-04-30", "face_value": 35.0},
+        {"coupon_no": "BEN_100001_001", "name": "生日免费饮品", "type": "权益券",
+         "status": "可使用", "valid_end": "2026-03-31", "face_value": 0.0},
+        {"coupon_no": "BEN_100001_002", "name": "好友邀请奖励", "type": "权益券",
+         "status": "可使用", "valid_end": "2026-12-31", "face_value": 30.0},
+    ],
+}
 
 
 # ---------------------------------------------------------------------------
@@ -29,46 +64,47 @@ def _random_id(prefix: str) -> str:
 # Confirmation Token Store (prevents skipping price confirmation)
 # ---------------------------------------------------------------------------
 
-_CONFIRMATION_TOKENS: dict[str, dict] = {}  # token → {created_at, ...}
-_CONFIRMATION_TOKEN_TTL = 300  # 5 minutes
-
-
-def _generate_confirmation_token() -> str:
-    """Generate a one-time confirmation token for L3 operations."""
-    token = f"cfm_{uuid.uuid4().hex[:12]}"
-    _CONFIRMATION_TOKENS[token] = {"created_at": time.monotonic(), "used": False}
-    return token
-
-
-def validate_confirmation_token(token: str) -> str | None:
-    """Validate a confirmation token. Returns error message or None if valid."""
-    record = _CONFIRMATION_TOKENS.get(token)
-    if not record:
-        return "确认令牌无效，请先调用 calculate_price 获取新的确认令牌。"
-    if record["used"]:
-        return "确认令牌已使用，请重新调用 calculate_price 获取新的确认令牌。"
-    elapsed = time.monotonic() - record["created_at"]
-    if elapsed > _CONFIRMATION_TOKEN_TTL:
-        return "确认令牌已过期（有效期5分钟），请重新调用 calculate_price。"
-    record["used"] = True
-    return None
+# Confirmation token functions delegated to utils (protocol-level security)
+from .utils import generate_confirmation_token as _generate_confirmation_token
+from .utils import validate_confirmation_token  # re-export for backward compat
 
 
 # ---------------------------------------------------------------------------
 # Idempotency Store (prevents duplicate L3 operations)
 # ---------------------------------------------------------------------------
 
-_IDEMPOTENCY_STORE: dict[str, dict] = {}  # key → result
+_IDEMPOTENCY_STORE: dict[str, dict] = {}  # key → {result, created_at}
+_IDEMPOTENCY_TTL = 86400  # 24 hours
+_IDEMPOTENCY_LAST_CLEANUP: float = 0.0
+
+
+def _cleanup_expired_idempotency() -> None:
+    """Remove expired idempotency entries to prevent memory accumulation."""
+    global _IDEMPOTENCY_LAST_CLEANUP
+    now = time.monotonic()
+    if now - _IDEMPOTENCY_LAST_CLEANUP < 300:  # cleanup at most every 5min
+        return
+    stale = [k for k, v in _IDEMPOTENCY_STORE.items()
+             if isinstance(v, dict) and v.get("_created_at")
+             and now - v["_created_at"] > _IDEMPOTENCY_TTL]
+    for k in stale:
+        del _IDEMPOTENCY_STORE[k]
+    _IDEMPOTENCY_LAST_CLEANUP = now
 
 
 def _check_idempotency(key: str) -> dict | None:
     """Check if an operation was already performed. Returns cached result or None."""
-    return _IDEMPOTENCY_STORE.get(key)
+    _cleanup_expired_idempotency()
+    entry = _IDEMPOTENCY_STORE.get(key)
+    if entry is None:
+        return None
+    # Return a copy without internal metadata
+    return {k: v for k, v in entry.items() if not k.startswith("_")}
 
 
 def _save_idempotency(key: str, result: dict) -> None:
-    """Save result for idempotency deduplication."""
-    _IDEMPOTENCY_STORE[key] = result
+    """Save result for idempotency deduplication with TTL metadata."""
+    _IDEMPOTENCY_STORE[key] = {**result, "_created_at": time.monotonic()}
 
 
 # ---------------------------------------------------------------------------
@@ -596,7 +632,7 @@ DELIVERY_ADDRESSES = {
 
 def get_current_user(user_id: str = DEFAULT_USER_ID) -> dict | None:
     """Resolve logged-in user. In production: from OAuth token."""
-    return mock_data.member_query(member_id=user_id)
+    return TOC_USERS.get(user_id)
 
 
 def my_account(user_id: str = DEFAULT_USER_ID) -> dict | None:
@@ -604,25 +640,36 @@ def my_account(user_id: str = DEFAULT_USER_ID) -> dict | None:
     user = get_current_user(user_id)
     if not user:
         return None
-    tier_info = mock_data.member_tier(user_id)
-    benefits = mock_data.member_benefits(user_id)
-    active_benefits = sum(1 for v in benefits.values() if v == 2) if benefits else 0
-    assets = mock_data.assets_list(user_id)
-    coupon_count = 0
-    if assets:
-        coupon_count = len(assets.get("upp_coupons", [])) + len(assets.get("benefit_coupons", []))
+    # Build tier info from ToC-local data
+    current_tier = user["member_tier"]
+    tiers = list(TIER_THRESHOLDS.keys())
+    idx = tiers.index(current_tier)
+    next_tier = tiers[idx + 1] if idx + 1 < len(tiers) else None
+    stars_to_next = (TIER_THRESHOLDS[next_tier] - user["star_balance"]) if next_tier else 0
+    tier_info = {
+        "member_tier": current_tier,
+        "tier_name": TIER_NAMES[current_tier],
+        "star_balance": user["star_balance"],
+        "tier_expire_date": user["tier_expire_date"],
+        "next_tier": next_tier,
+        "next_tier_name": TIER_NAMES.get(next_tier, ""),
+        "stars_to_next": max(0, stars_to_next),
+    }
+    benefits = TOC_USER_BENEFITS.get(user_id, {})
+    active_benefits = sum(1 for v in benefits.values() if v == 2)
+    coupons = TOC_USER_COUPONS.get(user_id, [])
     return {
         "name": user["name"],
         "tier_info": tier_info,
         "active_benefits": active_benefits,
-        "coupon_count": coupon_count,
+        "coupon_count": len(coupons),
         "registration_date": user["registration_date"],
     }
 
 
 def my_coupons(user_id: str = DEFAULT_USER_ID, status: str | None = None) -> list[dict]:
-    """User's coupon list. Combines B2B coupon + benefit data."""
-    items = mock_data.member_benefit_list(user_id)
+    """User's coupon list from ToC-local data."""
+    items = TOC_USER_COUPONS.get(user_id, [])
     if status == "valid":
         items = [i for i in items if i["status"] in ("未使用", "可使用")]
     elif status == "used":

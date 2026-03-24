@@ -411,7 +411,7 @@ async def run_tests():
                 "pickup_type": "自提",
                 "idempotency_key": "test_order_bad_store",
                 "confirmation_token": "cfm_invalid",
-            }, ["无效"])
+            }, ["不存在"])
 
             print("\n=== order_status ===")
             await check("completed order", "order_status", {"order_id": "TOC_ORD_20260318001"},
