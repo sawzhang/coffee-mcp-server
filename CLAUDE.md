@@ -122,6 +122,7 @@ MCP Server 提供能力，Skills + Commands 提供体验。
 | Command / Skill | Description |
 |---------|-------------|
 | `/mcp-review` / `mcp-review` | MCP Tool 设计审查（10 条准则 checklist） |
+| `/brand-onboard` / `brand-onboard` | 品牌自动接入（API 文档 → adapter.py + brand.yaml + 测试） |
 
 ### ToC 消费者旅程 (21 tools)
 
