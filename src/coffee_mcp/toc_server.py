@@ -275,7 +275,7 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
 
     @mcp.tool()
     def drink_detail(product_code: str) -> str:
-        """查看饮品详情和自定义选项（杯型/奶类/温度/甜度/加料）。
+        """查看饮品详情和自定义选项（杯型/奶类/温度/甜度/加料）。当用户想了解某个饮品有哪些定制选项时使用。
 
         Args:
             product_code: 商品编号（如 D003），从 browse_menu 获取
@@ -287,10 +287,10 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
 
     @mcp.tool()
     def nutrition_info(product_code: str, compact: bool = False) -> str:
-        """查询饮品营养成分（热量、蛋白质、脂肪等）。
+        """查询饮品营养成分（热量、蛋白质、脂肪等）。当用户问"多少卡"、"热量高吗"时使用。
 
         Args:
-            product_code: 商品编号
+            product_code: 商品编号（如 D001），从 browse_menu 获取
             compact: 紧凑模式，单行输出
         """
         info = adapter.nutrition_info(product_code)
@@ -316,10 +316,10 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
 
     @mcp.tool()
     def store_detail(store_id: str) -> str:
-        """查看门店详情：地址、营业时间、服务。
+        """查看门店详情：地址、营业时间、电话（脱敏显示）、服务。当用户问"这家店在哪"、"几点关门"时使用。
 
         Args:
-            store_id: 门店ID
+            store_id: 门店ID，从 nearby_stores 获取
         """
         store = adapter.store_detail(store_id)
         if not store:
@@ -345,10 +345,10 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
 
     @mcp.tool()
     def stars_product_detail(product_code: str) -> str:
-        """查看积分商品详情。
+        """查看积分商品详情。当用户想了解某个积分商品的兑换条件时使用。
 
         Args:
-            product_code: 积分商品编号
+            product_code: 积分商品编号，从 stars_mall_products 获取
         """
         if not features.get("stars_mall", True):
             return _FEATURE_NOT_AVAILABLE
@@ -434,18 +434,24 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
     @mcp.tool()
     def calculate_price(store_id: str, items: list[dict],
                         coupon_code: str | None = None) -> str:
-        """计算订单价格（含优惠），返回确认令牌用于下单。
+        """计算订单价格（含优惠），返回确认令牌用于下单。当用户选好商品准备下单时使用。
 
         Preconditions:
         - 必须先调用 nearby_stores 获取门店 store_id
-        - 商品 product_code 从 browse_menu 获取
+        - 商品 product_code 从 browse_menu 获取（格式如 D001, D002, F001，不要用英文名）
         Next:
         - 用户确认后将 confirmation_token 传入 create_order
 
         Args:
-            store_id: 门店ID
-            items: 商品列表 [{product_code, quantity, size?, milk?, extras?}]
-            coupon_code: 优惠券ID（可选）
+            store_id: 门店ID，从 nearby_stores 获取
+            items: 商品列表，每项包含:
+                - product_code: 商品编号（如 D001），必须从 browse_menu 返回的编号中获取
+                - quantity: 数量（默认1）
+                - size: 杯型 tall(中杯) / grande(大杯) / venti(超大杯)，注意星巴克中杯=tall
+                - milk: 奶型 whole / skim / oat / almond / soy / coconut
+                - temperature: 温度 hot / iced / blended
+                - extras: 加料列表，可选值: extra_shot / vanilla_syrup / caramel_syrup / hazelnut_syrup / whipped_cream / chocolate_sauce
+            coupon_code: 优惠券编号（可选），从 my_coupons 或 store_coupons 获取
         """
         if err := _validate_cart_items(items):
             return err
@@ -458,20 +464,21 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
                      confirmation_token: str,
                      coupon_code: str | None = None,
                      address_id: str | None = None) -> str:
-        """创建订单。[风险等级: L3]
+        """创建订单。[风险等级: L3] 当用户确认价格后说"下单"、"确认"时使用。
 
         Preconditions:
-        - 必须先调用 calculate_price 获取 confirmation_token
-        - 外送订单必须提供 address_id
+        - 必须先调用 calculate_price 获取 confirmation_token，不可跳过
+        - 外送订单必须提供 address_id（从 delivery_addresses 获取）
+        - items 格式与 calculate_price 相同
 
         Args:
-            store_id: 门店ID
-            items: 商品列表
+            store_id: 门店ID，从 nearby_stores 获取
+            items: 商品列表，与 calculate_price 中传入的一致
             pickup_type: "自提" / "外送" / "堂食"
-            idempotency_key: 幂等键，防重复下单
-            confirmation_token: 确认令牌（从 calculate_price 获取）
-            coupon_code: 优惠券ID（可选）
-            address_id: 配送地址ID（外送必填）
+            idempotency_key: 幂等键（UUID 格式），防重复下单
+            confirmation_token: 确认令牌，必须从 calculate_price 返回值中获取
+            coupon_code: 优惠券编号（可选）
+            address_id: 配送地址ID，外送必填，从 delivery_addresses 获取
         """
         if err := _check_rate_limit("create_order"):
             return err
@@ -501,10 +508,10 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
 
     @mcp.tool()
     def order_status(order_id: str) -> str:
-        """查询订单状态详情。
+        """查询订单状态详情。当用户问"我的订单怎么样了"、"做好了吗"时使用。
 
         Args:
-            order_id: 订单号
+            order_id: 订单号，从 create_order 或 my_orders 获取
         """
         order = adapter.order_status(order_id, default_user)
         if not order:
