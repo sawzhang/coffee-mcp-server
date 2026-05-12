@@ -1,0 +1,108 @@
+# Tool description hash — DO NOT EDIT manually.
+# Update via: uv run python scripts/hash_tool_descriptions.py update
+# Tool count: 21
+c26e04aa92916f5ef6505a91d7bdb6915e384142b1247295533e250a7f08b8dd
+  # available_coupons: 查询当前可领取的优惠券列表。
+
+When:
+- 用户问"有什么券可以领"、"券中心"
+Next:
+- 用户想全部领取时，…
+  # browse_menu: 浏览门店菜单，查看饮品和食品列表。
+
+Preconditions:
+- 必须先调用 nearby_stores 获取门店…
+  # calculate_price: 计算订单价格（含优惠），返回确认令牌用于下单。当用户选好商品准备下单时使用。
+
+Preconditions:
+- 必须先…
+  # campaign_calendar: 查询活动日历，发现当前和即将开始的优惠活动。
+
+When:
+- 用户问"有什么活动"、"最近有什么优惠"
+Next:
+-…
+  # claim_all_coupons: 一键领取所有可领取的优惠券。[风险等级: L2]
+
+安全限制: 每用户每小时最多 5 次
+When:
+- 用户说"帮我领…
+  # create_address: 创建新的配送地址。[风险等级: L2]
+
+Args:
+    city: 城市
+    address: 详细地址
+  …
+  # create_order: 创建订单。[风险等级: L3] 当用户确认价格后说"下单"、"确认"时使用。
+
+Preconditions:
+- 必须先…
+  # delivery_addresses: 查询我的配送地址列表。
+
+When:
+- 用户选择外送时，先查看/选择配送地址…
+  # drink_detail: 查看饮品详情和自定义选项（杯型/奶类/温度/甜度/加料）。当用户想了解某个饮品有哪些定制选项时使用。
+
+Args:
+  …
+  # my_account: 查询我的账户信息：等级、星星余额、可用权益、优惠券数量。
+
+When:
+- 用户问"我的等级"、"我有多少星星"、"我的…
+  # my_coupons: 查询我已有的优惠券列表。
+
+When:
+- 用户问"我有什么券"、"我的优惠券"
+
+Args:
+    status: …
+  # my_orders: 查询我的最近订单。
+
+When:
+- 用户问"我的订单"、"最近点了什么"
+
+Args:
+    limit: 返回最近…
+  # nearby_stores: 搜索附近门店，按城市或关键词筛选。
+
+When:
+- 用户说"附近有什么店"、"找一家店"
+
+Args:
+    cit…
+  # now_time_info: 返回当前日期时间和星期，供判断活动有效期、门店营业时间等。[风险等级: L0]
+
+When:
+- 在查询活动日历、判断优…
+  # nutrition_info: 查询饮品营养成分（热量、蛋白质、脂肪等）。当用户问"多少卡"、"热量高吗"时使用。
+
+Args:
+    product…
+  # order_status: 查询订单状态详情。当用户问"我的订单怎么样了"、"做好了吗"时使用。
+
+Args:
+    order_id: 订单号，…
+  # stars_mall_products: 浏览积分商城，查看可兑换商品。
+
+When:
+- 用户问"积分能换什么"、"星星商城"
+
+Args:
+    categ…
+  # stars_product_detail: 查看积分商品详情。当用户想了解某个积分商品的兑换条件时使用。
+
+Args:
+    product_code: 积分商品…
+  # stars_redeem: 用星星兑换积分商城商品。[风险等级: L3]
+
+安全限制: 每用户每天最多 10 次
+Preconditions:
+- …
+  # store_coupons: 查询在指定门店可使用的优惠券。
+
+Preconditions:
+- 必须先调用 nearby_stores 获取门店信息…
+  # store_detail: 查看门店详情：地址、营业时间、电话（脱敏显示）、服务。当用户问"这家店在哪"、"几点关门"时使用。
+
+Args:
+   …

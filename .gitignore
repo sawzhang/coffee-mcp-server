@@ -9,3 +9,5 @@ uv.lock
 .DS_Store
 results.tsv
 run.log
+audit.jsonl
+audit-*.jsonl

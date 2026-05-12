@@ -42,7 +42,7 @@ class SessionStore(ABC):
     """Interface kept narrow so a Redis backend can drop in."""
 
     @abstractmethod
-    def create(self) -> Session: ...
+    def create(self, *, short_ttl: bool = False) -> Session: ...
 
     @abstractmethod
     def get(self, session_id: str) -> Session | None: ...
@@ -76,20 +76,37 @@ class InMemorySessionStore(SessionStore):
 
     Cleanup runs lazily on every mutating call, at most once per 60s,
     using the same window-based eviction as utils.py.
+
+    `short_ttl` sessions (anonymous, minted by tool guard to carry a session_id
+    in continue_url) expire in 10 minutes by default. Authenticated sessions
+    use the regular TTL. An LRU cap on anonymous sessions prevents the
+    "every call mints a session" path from being a DoS vector.
     """
 
-    def __init__(self, ttl_seconds: int = 3600):
+    def __init__(self, ttl_seconds: int = 3600,
+                 anonymous_ttl_seconds: int = 600,
+                 max_anonymous: int = 5000):
         self._sessions: dict[str, Session] = {}
+        self._anonymous_sids: list[str] = []  # FIFO of anonymous-only ids
         self._ttl = ttl_seconds
+        self._anonymous_ttl = anonymous_ttl_seconds
+        self._max_anonymous = max_anonymous
         self._last_cleanup: float = 0.0
         self._cleanup_interval: float = 60.0
 
     # ---- lifecycle ----
 
-    def create(self) -> Session:
+    def create(self, *, short_ttl: bool = False) -> Session:
         self._maybe_cleanup()
         sid = f"sess_{uuid.uuid4().hex}"
         session = Session(session_id=sid)
+        if short_ttl:
+            # Track for LRU eviction; mark by created_at offset so _is_expired
+            # picks the right ttl based on auth_level.
+            self._anonymous_sids.append(sid)
+            while len(self._anonymous_sids) > self._max_anonymous:
+                evict = self._anonymous_sids.pop(0)
+                self._sessions.pop(evict, None)
         self._sessions[sid] = session
         return session
 
@@ -141,6 +158,11 @@ class InMemorySessionStore(SessionStore):
         s.pkce_verifier = None
         s.pkce_state = None
         s.requested_scope = None
+        # Session has graduated from anonymous → drop from LRU list.
+        try:
+            self._anonymous_sids.remove(session_id)
+        except ValueError:
+            pass
         return s
 
     def mark_step_up(self, session_id: str, ttl: int = 300) -> None:
@@ -159,11 +181,16 @@ class InMemorySessionStore(SessionStore):
 
     def clear(self, session_id: str) -> None:
         self._sessions.pop(session_id, None)
+        try:
+            self._anonymous_sids.remove(session_id)
+        except ValueError:
+            pass
 
     # ---- internals ----
 
     def _is_expired(self, s: Session) -> bool:
-        return (time.monotonic() - s.last_active_at) > self._ttl
+        ttl = self._ttl if s.member_id else self._anonymous_ttl
+        return (time.monotonic() - s.last_active_at) > ttl
 
     def _maybe_cleanup(self) -> None:
         now = time.monotonic()
@@ -172,7 +199,18 @@ class InMemorySessionStore(SessionStore):
         stale = [sid for sid, s in self._sessions.items() if self._is_expired(s)]
         for sid in stale:
             del self._sessions[sid]
+            try:
+                self._anonymous_sids.remove(sid)
+            except ValueError:
+                pass
         self._last_cleanup = now
+
+    # ---- diagnostics (used in tests) ----
+
+    def stats(self) -> dict:
+        anon = sum(1 for s in self._sessions.values() if not s.member_id)
+        authed = len(self._sessions) - anon
+        return {"total": len(self._sessions), "anonymous": anon, "authenticated": authed}
 
 
 def generate_pkce_pair() -> tuple[str, str]:

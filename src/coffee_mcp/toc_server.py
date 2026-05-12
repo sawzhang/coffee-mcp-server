@@ -133,6 +133,7 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter,
     """
 
     # Local imports keep auth deps optional for stdio-only users.
+    from .auth import audit
     from .auth.scopes import (
         DEFAULT_SCOPES,
         STEP_UP_REQUIRED,
@@ -156,31 +157,28 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter,
 
     def _continue_url_json(session: Session | None, scope: str | None,
                            reason: str = "需要登录") -> str:
-        """Tool result for "not authenticated" — JSON dict per spec §3.2."""
+        """Tool result for "not authenticated" — JSON dict per spec §3.2.
+
+        The `session_id` field tells the client which session to echo back via
+        the `X-Session-Id` header on retry — required for the anonymous flow
+        not to leak a new session per call.
+        """
         sid = session.session_id if session else ""
-        oauth = config.oauth
-        if oauth is None or oauth.h5_login_url == "":
-            url = ""
-        else:
-            sep = "&" if "?" in oauth.h5_login_url else "?"
-            params = f"session_id={sid}"
-            if scope:
-                params += f"&scope={scope}"
-            params += f"&brand={config.brand_id}"
-            url = f"{oauth.h5_login_url}{sep}{params}" if oauth.h5_login_url \
-                else f"/oauth/login_start?{params}"
-        # When use_mock_as, send the user through /oauth/login_start so PKCE
-        # is set up server-side first.
-        if oauth is not None:
-            url = f"/oauth/login_start?session_id={sid}"
-            if scope:
-                url += f"&scope={scope}"
+        params = []
+        if sid:
+            params.append(f"session_id={sid}")
+        if scope:
+            params.append(f"scope={scope}")
+        qs = ("?" + "&".join(params)) if params else ""
+        url = f"/oauth/login_start{qs}" if config.oauth is not None else ""
         return json.dumps({
             "authenticated": False,
+            "session_id": sid,
             "continue_url": url,
             "message": f"{reason},请在浏览器中完成后,再次问我即可。",
             "expires_in": 600,
             "required_scope": scope,
+            "retry_hint": "下次调用请在请求头 X-Session-Id 中带上 session_id,避免重复创建会话。",
         }, ensure_ascii=False)
 
     def _scope_elevation_json(session: Session, missing_scope: str) -> str:
@@ -206,12 +204,11 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter,
         }, ensure_ascii=False)
 
     def _resolve_session_from_request(ctx: Context | None) -> Session | None:
-        """Return the Session for the bearer token in `ctx`, or None.
+        """Return the Session for the bearer token / X-Session-Id, or None.
 
-        Returns None when:
-          - session_store is not wired (stdio / raw-http entry point)
-          - the request has no Authorization header
-          - the token is invalid / expired
+        Never creates a new session here — that's `_require_auth`'s job, and
+        only when it needs to emit a continue_url. This keeps the anonymous
+        path from leaking one session per tool call.
         """
         if session_store is None or ctx is None:
             return None
@@ -222,26 +219,20 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter,
         if req is None:
             return None
 
-        # Prefer existing session by token. Fall back to header-only X-Session-Id.
         auth_header = ""
+        sid_header = ""
         try:
             auth_header = req.headers.get("authorization", "") or ""
+            sid_header = req.headers.get("x-session-id", "") or ""
         except Exception:
-            auth_header = ""
+            pass
 
-        token = ""
-        if auth_header.lower().startswith("bearer "):
-            token = auth_header[7:].strip()
+        token = auth_header[7:].strip() if auth_header.lower().startswith("bearer ") else ""
 
         if token:
-            # Mock AS path: introspect + locate session, or create a fresh one.
-            info: dict | None = None
-            if mock_as is not None:
-                info = mock_as.introspect(token)
-            # Real brand AS path: future — validate via JWT/jwks_uri.
+            info = _validate_token(token)
             if info is None:
                 return None
-
             sess = session_store.find_by_token(token)
             if sess is None:
                 sess = session_store.create()
@@ -257,54 +248,105 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter,
                 return None
             return sess
 
-        # No bearer token — let caller treat as anonymous (we still want to be able
-        # to surface a continue_url tied to a session). Mint a fresh session so the
-        # client can resume.
-        sid_header = ""
-        try:
-            sid_header = req.headers.get("x-session-id", "") or ""
-        except Exception:
-            sid_header = ""
         if sid_header:
             existing = session_store.get(sid_header)
             if existing:
                 return existing
-        return session_store.create()
+        return None
+
+    def _validate_token(token: str) -> dict | None:
+        """Resolve a bearer token to {member_id, scope, exp}.
+
+        Mock AS path uses introspection; real-AS path validates JWT via the
+        brand's jwks_uri (see auth.jwt_validator).
+        """
+        if mock_as is not None:
+            return mock_as.introspect(token)
+        if config.oauth and config.oauth.jwks_uri:
+            from .auth.jwt_validator import validate_jwt
+            return validate_jwt(token, config.oauth)
+        return None
+
+    def _request_metadata(ctx: Context | None) -> dict:
+        """Pull IP / UA / mcp-client headers for audit logging."""
+        if ctx is None:
+            return {}
+        try:
+            req = ctx.request_context.request
+        except Exception:
+            return {}
+        if req is None:
+            return {}
+        try:
+            return {
+                "ip": (req.headers.get("x-forwarded-for") or
+                       (req.client.host if req.client else None)),
+                "user_agent": req.headers.get("user-agent"),
+                "mcp_client": (req.headers.get("x-mcp-client") or
+                               req.headers.get("user-agent")),
+                "agent_id": req.headers.get("x-agent-id"),
+            }
+        except Exception:
+            return {}
 
     def _require_auth(ctx: Context | None,
                       tool_name: str) -> tuple[str | None, str | None]:
         """Resolve (user_id, error_json). Exactly one of them is None.
 
         Falls back to `default_user` when no HTTP request is in flight (stdio).
+        Every decision is mirrored to the audit log (PIPL §55).
         """
         required_scope = TOOL_SCOPES.get(tool_name)
-        # L0 public tool — short-circuit.
+        meta = _request_metadata(ctx)
+        # L0 public tool — short-circuit, audit as public access.
         if required_scope is None:
+            audit.record(tool=tool_name, result="granted_l0_public",
+                         scope_used=None, **meta)
             return default_user, None
 
         session = _resolve_session_from_request(ctx)
         if session is None:
-            # No HTTP request (stdio) OR no session store wired → demo fallback.
             if session_store is None:
+                audit.record(tool=tool_name, result="granted_stdio_fallback",
+                             member_id=default_user, scope_used=required_scope, **meta)
                 return default_user, None
-            # session_store wired but request missing — should not happen for HTTP.
-            return None, _continue_url_json(None, required_scope, reason="需要登录")
-
-        if session.auth_level == AuthLevel.ANONYMOUS or session.member_id is None:
+            session = session_store.create(short_ttl=True)
+            audit.record(tool=tool_name, result="denied_anonymous",
+                         session_id=session.session_id,
+                         scope_used=required_scope, **meta)
             return None, _continue_url_json(session, required_scope, reason="需要登录")
 
-        # Token expired?
+        sid = session.session_id
+
+        if session.auth_level == AuthLevel.ANONYMOUS or session.member_id is None:
+            audit.record(tool=tool_name, result="denied_anonymous",
+                         session_id=sid, scope_used=required_scope, **meta)
+            return None, _continue_url_json(session, required_scope, reason="需要登录")
+
         if session.token_expires_at and session.token_expires_at <= time.monotonic():
+            audit.record(tool=tool_name, result="denied_token_expired",
+                         session_id=sid, member_id=session.member_id,
+                         scope_used=required_scope, **meta)
             return None, _continue_url_json(session, required_scope, reason="登录已过期")
 
         if required_scope not in session.scope:
+            audit.record(tool=tool_name, result="denied_scope_insufficient",
+                         session_id=sid, member_id=session.member_id,
+                         scope_used=required_scope, **meta,
+                         extra={"granted": sorted(session.scope)})
             return None, _scope_elevation_json(session, required_scope)
 
         if tool_name in STEP_UP_REQUIRED:
             if (session.auth_level != AuthLevel.STEP_UP_VERIFIED
                     or session.step_up_expires_at <= time.monotonic()):
+                audit.record(tool=tool_name, result="denied_step_up_needed",
+                             session_id=sid, member_id=session.member_id,
+                             scope_used=required_scope, **meta)
                 return None, _step_up_json(session, tool_name)
 
+        audit.record(tool=tool_name, result="granted",
+                     session_id=sid, member_id=session.member_id,
+                     scope_used=required_scope, **meta)
         return session.member_id, None
 
     def _check_rate_limit(tool_name: str, user_id: str) -> str | None:

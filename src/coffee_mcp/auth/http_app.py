@@ -9,12 +9,14 @@ import contextlib
 import os
 
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
 from starlette.routing import Mount
 
 from ..brand_config import load_brand_adapter, load_brand_config
 from ..toc_server import create_toc_server
 from .mock_as import MockAS
 from .oauth_routes import build_oauth_routes
+from .rate_limit import IPRateLimitMiddleware
 from .session_store import InMemorySessionStore
 
 
@@ -51,7 +53,8 @@ def build_app(config=None, adapter=None) -> Starlette:
     routes = build_oauth_routes(config, store, mock_as)
     routes.append(Mount("/", app=mcp_app))
 
-    app = Starlette(routes=routes, lifespan=lifespan)
+    middleware = [Middleware(IPRateLimitMiddleware)]
+    app = Starlette(routes=routes, lifespan=lifespan, middleware=middleware)
     app.state.session_store = store
     app.state.mock_as = mock_as
     app.state.brand_config = config
