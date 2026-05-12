@@ -8,18 +8,25 @@ Default brand: coffee_company (demo mode with mock data).
 
 Security: Tools are classified into risk levels L0-L3.
 See docs/TOC_SECURITY.md for the full threat model.
+
+OAuth (Stage 1): when `session_store` is provided, tools enforce scope-gated
+access via _require_auth. When no HTTP request is in flight (stdio mode) or
+no session store is wired (raw streamable-http), the guard falls back to
+`default_user` for backward compatibility.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import IntEnum
+from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 
 from . import toc_formatters as fmt
 from .brand_adapter import BrandAdapter
@@ -114,8 +121,24 @@ def _build_rate_limits(config: BrandConfig) -> dict[RiskLevel, _RateLimit]:
 # Server factory
 # =========================================================================
 
-def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
-    """Create a configured ToC MCP server for a specific brand."""
+def create_toc_server(config: BrandConfig, adapter: BrandAdapter,
+                      *,
+                      session_store: Any | None = None,
+                      mock_as: Any | None = None) -> FastMCP:
+    """Create a configured ToC MCP server for a specific brand.
+
+    `session_store` and `mock_as` are wired by auth/http_app.py to enable
+    Stage 1 OAuth. Leaving them None preserves the existing stdio / raw-http
+    behavior (every tool falls back to `default_user`).
+    """
+
+    # Local imports keep auth deps optional for stdio-only users.
+    from .auth.scopes import (
+        DEFAULT_SCOPES,
+        STEP_UP_REQUIRED,
+        TOOL_SCOPES,
+    )
+    from .auth.session_store import AuthLevel, Session
 
     rate_limits = _build_rate_limits(config)
     val = config.validation
@@ -129,7 +152,162 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
 
     _FEATURE_NOT_AVAILABLE = "该品牌暂未开通此功能。"
 
-    def _check_rate_limit(tool_name: str, user_id: str = default_user) -> str | None:
+    # ---------------- auth helpers (Stage 1) ----------------
+
+    def _continue_url_json(session: Session | None, scope: str | None,
+                           reason: str = "需要登录") -> str:
+        """Tool result for "not authenticated" — JSON dict per spec §3.2."""
+        sid = session.session_id if session else ""
+        oauth = config.oauth
+        if oauth is None or oauth.h5_login_url == "":
+            url = ""
+        else:
+            sep = "&" if "?" in oauth.h5_login_url else "?"
+            params = f"session_id={sid}"
+            if scope:
+                params += f"&scope={scope}"
+            params += f"&brand={config.brand_id}"
+            url = f"{oauth.h5_login_url}{sep}{params}" if oauth.h5_login_url \
+                else f"/oauth/login_start?{params}"
+        # When use_mock_as, send the user through /oauth/login_start so PKCE
+        # is set up server-side first.
+        if oauth is not None:
+            url = f"/oauth/login_start?session_id={sid}"
+            if scope:
+                url += f"&scope={scope}"
+        return json.dumps({
+            "authenticated": False,
+            "continue_url": url,
+            "message": f"{reason},请在浏览器中完成后,再次问我即可。",
+            "expires_in": 600,
+            "required_scope": scope,
+        }, ensure_ascii=False)
+
+    def _scope_elevation_json(session: Session, missing_scope: str) -> str:
+        sid = session.session_id
+        url = f"/oauth/login_start?session_id={sid}&scope={missing_scope}"
+        return json.dumps({
+            "authenticated": True,
+            "continue_url": url,
+            "message": f"当前权限不足,需要授予 '{missing_scope}',请在浏览器中确认。",
+            "missing_scope": missing_scope,
+            "expires_in": 600,
+        }, ensure_ascii=False)
+
+    def _step_up_json(session: Session, tool_name: str) -> str:
+        sid = session.session_id
+        url = f"/h5/step_up?session_id={sid}&tool={tool_name}"
+        return json.dumps({
+            "authenticated": True,
+            "step_up_required": True,
+            "continue_url": url,
+            "message": f"操作 '{tool_name}' 需要二次确认,请在浏览器中确认后再次发起。",
+            "expires_in": 300,
+        }, ensure_ascii=False)
+
+    def _resolve_session_from_request(ctx: Context | None) -> Session | None:
+        """Return the Session for the bearer token in `ctx`, or None.
+
+        Returns None when:
+          - session_store is not wired (stdio / raw-http entry point)
+          - the request has no Authorization header
+          - the token is invalid / expired
+        """
+        if session_store is None or ctx is None:
+            return None
+        try:
+            req = ctx.request_context.request  # Starlette Request for HTTP transport
+        except Exception:
+            return None
+        if req is None:
+            return None
+
+        # Prefer existing session by token. Fall back to header-only X-Session-Id.
+        auth_header = ""
+        try:
+            auth_header = req.headers.get("authorization", "") or ""
+        except Exception:
+            auth_header = ""
+
+        token = ""
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header[7:].strip()
+
+        if token:
+            # Mock AS path: introspect + locate session, or create a fresh one.
+            info: dict | None = None
+            if mock_as is not None:
+                info = mock_as.introspect(token)
+            # Real brand AS path: future — validate via JWT/jwks_uri.
+            if info is None:
+                return None
+
+            sess = session_store.find_by_token(token)
+            if sess is None:
+                sess = session_store.create()
+                session_store.upgrade(
+                    sess.session_id,
+                    member_id=info["member_id"],
+                    scope=info["scope"],
+                    member_token=token,
+                    token_expires_in=max(int(info["exp"] - time.monotonic()), 1),
+                )
+                sess = session_store.get(sess.session_id)
+            elif sess.token_expires_at <= time.monotonic():
+                return None
+            return sess
+
+        # No bearer token — let caller treat as anonymous (we still want to be able
+        # to surface a continue_url tied to a session). Mint a fresh session so the
+        # client can resume.
+        sid_header = ""
+        try:
+            sid_header = req.headers.get("x-session-id", "") or ""
+        except Exception:
+            sid_header = ""
+        if sid_header:
+            existing = session_store.get(sid_header)
+            if existing:
+                return existing
+        return session_store.create()
+
+    def _require_auth(ctx: Context | None,
+                      tool_name: str) -> tuple[str | None, str | None]:
+        """Resolve (user_id, error_json). Exactly one of them is None.
+
+        Falls back to `default_user` when no HTTP request is in flight (stdio).
+        """
+        required_scope = TOOL_SCOPES.get(tool_name)
+        # L0 public tool — short-circuit.
+        if required_scope is None:
+            return default_user, None
+
+        session = _resolve_session_from_request(ctx)
+        if session is None:
+            # No HTTP request (stdio) OR no session store wired → demo fallback.
+            if session_store is None:
+                return default_user, None
+            # session_store wired but request missing — should not happen for HTTP.
+            return None, _continue_url_json(None, required_scope, reason="需要登录")
+
+        if session.auth_level == AuthLevel.ANONYMOUS or session.member_id is None:
+            return None, _continue_url_json(session, required_scope, reason="需要登录")
+
+        # Token expired?
+        if session.token_expires_at and session.token_expires_at <= time.monotonic():
+            return None, _continue_url_json(session, required_scope, reason="登录已过期")
+
+        if required_scope not in session.scope:
+            return None, _scope_elevation_json(session, required_scope)
+
+        if tool_name in STEP_UP_REQUIRED:
+            if (session.auth_level != AuthLevel.STEP_UP_VERIFIED
+                    or session.step_up_expires_at <= time.monotonic()):
+                return None, _step_up_json(session, tool_name)
+
+        return session.member_id, None
+
+    def _check_rate_limit(tool_name: str, user_id: str) -> str | None:
         level = _TOOL_RISK.get(tool_name, RiskLevel.L1_AUTH_READ)
         limiter = rate_limits.get(level)
         if limiter and not limiter.check(f"{user_id}:{tool_name}"):
@@ -166,17 +344,19 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
     # =====================================================================
 
     @mcp.tool()
-    def now_time_info() -> str:
+    def now_time_info(ctx: Context) -> str:
         """返回当前日期时间和星期，供判断活动有效期、门店营业时间等。[风险等级: L0]
 
         When:
         - 在查询活动日历、判断优惠券有效期之前调用
         - 判断门店是否在营业时间内
         """
+        user_id, err = _require_auth(ctx, "now_time_info")
+        if err: return err
         return fmt.format_now_time_info()
 
     @mcp.tool()
-    def campaign_calendar(month: str | None = None) -> str:
+    def campaign_calendar(ctx: Context, month: str | None = None) -> str:
         """查询活动日历，发现当前和即将开始的优惠活动。
 
         When:
@@ -187,11 +367,13 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
         Args:
             month: 可选，查询指定月份 (格式: yyyy-MM)，默认当月
         """
+        user_id, err = _require_auth(ctx, "campaign_calendar")
+        if err: return err
         campaigns = adapter.campaign_calendar(month)
         return fmt.format_campaigns(campaigns)
 
     @mcp.tool()
-    def available_coupons() -> str:
+    def available_coupons(ctx: Context) -> str:
         """查询当前可领取的优惠券列表。
 
         When:
@@ -199,36 +381,42 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
         Next:
         - 用户想全部领取时，引导使用 claim_all_coupons
         """
+        user_id, err = _require_auth(ctx, "available_coupons")
+        if err: return err
         coupons = adapter.available_coupons()
         return fmt.format_available_coupons(coupons)
 
     @mcp.tool()
-    def claim_all_coupons() -> str:
+    def claim_all_coupons(ctx: Context) -> str:
         """一键领取所有可领取的优惠券。[风险等级: L2]
 
         安全限制: 每用户每小时最多 5 次
         When:
         - 用户说"帮我领券"、"一键领取"、"全部领了"
         """
-        if err := _check_rate_limit("claim_all_coupons"):
-            return err
-        result = adapter.claim_all_coupons(default_user)
+        user_id, err = _require_auth(ctx, "claim_all_coupons")
+        if err: return err
+        if rerr := _check_rate_limit("claim_all_coupons", user_id):
+            return rerr
+        result = adapter.claim_all_coupons(user_id)
         return fmt.format_claim_result(result)
 
     @mcp.tool()
-    def my_account() -> str:
+    def my_account(ctx: Context) -> str:
         """查询我的账户信息：等级、星星余额、可用权益、优惠券数量。
 
         When:
         - 用户问"我的等级"、"我有多少星星"、"我的账户"
         """
-        info = adapter.my_account(default_user)
+        user_id, err = _require_auth(ctx, "my_account")
+        if err: return err
+        info = adapter.my_account(user_id)
         if not info:
             return "未能获取账户信息，请确认登录状态。"
         return fmt.format_my_account(info)
 
     @mcp.tool()
-    def my_coupons(status: str | None = None) -> str:
+    def my_coupons(ctx: Context, status: str | None = None) -> str:
         """查询我已有的优惠券列表。
 
         When:
@@ -237,11 +425,13 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
         Args:
             status: 可选筛选 "valid"(可用) / "used"(已使用)
         """
-        items = adapter.my_coupons(default_user, status=status)
+        user_id, err = _require_auth(ctx, "my_coupons")
+        if err: return err
+        items = adapter.my_coupons(user_id, status=status)
         return fmt.format_my_coupons(items)
 
     @mcp.tool()
-    def my_orders(limit: int = 5) -> str:
+    def my_orders(ctx: Context, limit: int = 5) -> str:
         """查询我的最近订单。
 
         When:
@@ -250,11 +440,13 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
         Args:
             limit: 返回最近几笔订单，默认5
         """
-        orders = adapter.my_orders(default_user, limit=limit)
+        user_id, err = _require_auth(ctx, "my_orders")
+        if err: return err
+        orders = adapter.my_orders(user_id, limit=limit)
         return fmt.format_my_orders(orders)
 
     @mcp.tool()
-    def browse_menu(store_id: str, compact: bool = False) -> str:
+    def browse_menu(ctx: Context, store_id: str, compact: bool = False) -> str:
         """浏览门店菜单，查看饮品和食品列表。
 
         Preconditions:
@@ -268,31 +460,37 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
             store_id: 门店ID，从 nearby_stores 获取
             compact: 紧凑模式，减少 token 消耗
         """
+        user_id, err = _require_auth(ctx, "browse_menu")
+        if err: return err
         menu = adapter.browse_menu(store_id)
         if compact:
             return fmt.format_menu_compact(menu, config.size_options)
         return fmt.format_menu(menu, config.size_options)
 
     @mcp.tool()
-    def drink_detail(product_code: str) -> str:
+    def drink_detail(ctx: Context, product_code: str) -> str:
         """查看饮品详情和自定义选项（杯型/奶类/温度/甜度/加料）。当用户想了解某个饮品有哪些定制选项时使用。
 
         Args:
             product_code: 商品编号（如 D003），从 browse_menu 获取
         """
+        user_id, err = _require_auth(ctx, "drink_detail")
+        if err: return err
         item = adapter.drink_detail(product_code)
         if not item:
             return f"未找到商品 {product_code}。请检查商品编号。"
         return fmt.format_drink_detail(item)
 
     @mcp.tool()
-    def nutrition_info(product_code: str, compact: bool = False) -> str:
+    def nutrition_info(ctx: Context, product_code: str, compact: bool = False) -> str:
         """查询饮品营养成分（热量、蛋白质、脂肪等）。当用户问"多少卡"、"热量高吗"时使用。
 
         Args:
             product_code: 商品编号（如 D001），从 browse_menu 获取
             compact: 紧凑模式，单行输出
         """
+        user_id, err = _require_auth(ctx, "nutrition_info")
+        if err: return err
         info = adapter.nutrition_info(product_code)
         if not info:
             return f"未找到商品 {product_code} 的营养信息。"
@@ -301,7 +499,7 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
         return fmt.format_nutrition(info)
 
     @mcp.tool()
-    def nearby_stores(city: str | None = None, keyword: str | None = None) -> str:
+    def nearby_stores(ctx: Context, city: str | None = None, keyword: str | None = None) -> str:
         """搜索附近门店，按城市或关键词筛选。
 
         When:
@@ -311,23 +509,27 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
             city: 可选，城市名
             keyword: 可选，关键词搜索
         """
+        user_id, err = _require_auth(ctx, "nearby_stores")
+        if err: return err
         stores = adapter.nearby_stores(city=city, keyword=keyword)
         return fmt.format_nearby_stores(stores)
 
     @mcp.tool()
-    def store_detail(store_id: str) -> str:
+    def store_detail(ctx: Context, store_id: str) -> str:
         """查看门店详情：地址、营业时间、电话（脱敏显示）、服务。当用户问"这家店在哪"、"几点关门"时使用。
 
         Args:
             store_id: 门店ID，从 nearby_stores 获取
         """
+        user_id, err = _require_auth(ctx, "store_detail")
+        if err: return err
         store = adapter.store_detail(store_id)
         if not store:
             return f"未找到门店 {store_id}。"
         return fmt.format_store_detail(store)
 
     @mcp.tool()
-    def stars_mall_products(category: str | None = None) -> str:
+    def stars_mall_products(ctx: Context, category: str | None = None) -> str:
         """浏览积分商城，查看可兑换商品。
 
         When:
@@ -336,31 +538,35 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
         Args:
             category: 可选分类筛选
         """
+        user_id, err = _require_auth(ctx, "stars_mall_products")
+        if err: return err
         if not features.get("stars_mall", True):
             return _FEATURE_NOT_AVAILABLE
         products = adapter.stars_mall_products(category)
-        user = adapter.get_current_user(default_user)
+        user = adapter.get_current_user(user_id)
         user_stars = user["star_balance"] if user else 0
         return fmt.format_stars_mall(products, user_stars)
 
     @mcp.tool()
-    def stars_product_detail(product_code: str) -> str:
+    def stars_product_detail(ctx: Context, product_code: str) -> str:
         """查看积分商品详情。当用户想了解某个积分商品的兑换条件时使用。
 
         Args:
             product_code: 积分商品编号，从 stars_mall_products 获取
         """
+        user_id, err = _require_auth(ctx, "stars_product_detail")
+        if err: return err
         if not features.get("stars_mall", True):
             return _FEATURE_NOT_AVAILABLE
         product = adapter.stars_product_detail(product_code)
         if not product:
             return f"未找到积分商品 {product_code}。"
-        user = adapter.get_current_user(default_user)
+        user = adapter.get_current_user(user_id)
         user_stars = user["star_balance"] if user else 0
         return fmt.format_stars_product_detail(product, user_stars)
 
     @mcp.tool()
-    def stars_redeem(product_code: str, idempotency_key: str) -> str:
+    def stars_redeem(ctx: Context, product_code: str, idempotency_key: str) -> str:
         """用星星兑换积分商城商品。[风险等级: L3]
 
         安全限制: 每用户每天最多 10 次
@@ -372,26 +578,30 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
             product_code: 积分商品编号
             idempotency_key: 幂等键，防重复兑换
         """
+        user_id, err = _require_auth(ctx, "stars_redeem")
+        if err: return err
         if not features.get("stars_mall", True):
             return _FEATURE_NOT_AVAILABLE
-        if err := _check_rate_limit("stars_redeem"):
-            return err
-        result = adapter.stars_redeem(product_code, default_user,
+        if rerr := _check_rate_limit("stars_redeem", user_id):
+            return rerr
+        result = adapter.stars_redeem(product_code, user_id,
                                       idempotency_key=idempotency_key)
         return fmt.format_stars_redeem_result(result)
 
     @mcp.tool()
-    def delivery_addresses() -> str:
+    def delivery_addresses(ctx: Context) -> str:
         """查询我的配送地址列表。
 
         When:
         - 用户选择外送时，先查看/选择配送地址
         """
-        addrs = adapter.delivery_addresses(default_user)
+        user_id, err = _require_auth(ctx, "delivery_addresses")
+        if err: return err
+        addrs = adapter.delivery_addresses(user_id)
         return fmt.format_delivery_addresses(addrs)
 
     @mcp.tool()
-    def create_address(city: str, address: str, address_detail: str,
+    def create_address(ctx: Context, city: str, address: str, address_detail: str,
                        contact_name: str, phone: str) -> str:
         """创建新的配送地址。[风险等级: L2]
 
@@ -402,22 +612,24 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
             contact_name: 联系人
             phone: 手机号（11位）
         """
-        if err := _check_rate_limit("create_address"):
-            return err
+        user_id, err = _require_auth(ctx, "create_address")
+        if err: return err
+        if rerr := _check_rate_limit("create_address", user_id):
+            return rerr
         if not phone_re.match(phone):
             return "手机号格式无效，请输入11位手机号。"
-        existing = adapter.delivery_addresses(default_user)
+        existing = adapter.delivery_addresses(user_id)
         if len(existing) >= val.max_addresses:
             return f"最多保存 {val.max_addresses} 个地址，请先删除不用的地址。"
         if not all([city.strip(), address.strip(), address_detail.strip(),
                     contact_name.strip()]):
             return "地址信息不完整，请填写所有必填项。"
-        addr = adapter.create_address(default_user, city, address,
+        addr = adapter.create_address(user_id, city, address,
                                       address_detail, contact_name, phone)
         return fmt.format_new_address(addr)
 
     @mcp.tool()
-    def store_coupons(store_id: str) -> str:
+    def store_coupons(ctx: Context, store_id: str) -> str:
         """查询在指定门店可使用的优惠券。
 
         Preconditions:
@@ -426,13 +638,15 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
         Args:
             store_id: 门店ID
         """
+        user_id, err = _require_auth(ctx, "store_coupons")
+        if err: return err
         store = adapter.store_detail(store_id)
         store_name = store["name"] if store else store_id
-        coupons = adapter.store_coupons(store_id, default_user)
+        coupons = adapter.store_coupons(store_id, user_id)
         return fmt.format_store_coupons(coupons, store_name)
 
     @mcp.tool()
-    def calculate_price(store_id: str, items: list[dict],
+    def calculate_price(ctx: Context, store_id: str, items: list[dict],
                         coupon_code: str | None = None) -> str:
         """计算订单价格（含优惠），返回确认令牌用于下单。当用户选好商品准备下单时使用。
 
@@ -453,13 +667,15 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
                 - extras: 加料列表，可选值: extra_shot / vanilla_syrup / caramel_syrup / hazelnut_syrup / whipped_cream / chocolate_sauce
             coupon_code: 优惠券编号（可选），从 my_coupons 或 store_coupons 获取
         """
-        if err := _validate_cart_items(items):
-            return err
+        user_id, err = _require_auth(ctx, "calculate_price")
+        if err: return err
+        if verr := _validate_cart_items(items):
+            return verr
         result = adapter.calculate_price(store_id, items, coupon_code)
         return fmt.format_price_calculation(result)
 
     @mcp.tool()
-    def create_order(store_id: str, items: list[dict], pickup_type: str,
+    def create_order(ctx: Context, store_id: str, items: list[dict], pickup_type: str,
                      idempotency_key: str,
                      confirmation_token: str,
                      coupon_code: str | None = None,
@@ -480,10 +696,12 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
             coupon_code: 优惠券编号（可选）
             address_id: 配送地址ID，外送必填，从 delivery_addresses 获取
         """
-        if err := _check_rate_limit("create_order"):
-            return err
-        if err := _validate_cart_items(items):
-            return err
+        user_id, err = _require_auth(ctx, "create_order")
+        if err: return err
+        if rerr := _check_rate_limit("create_order", user_id):
+            return rerr
+        if verr := _validate_cart_items(items):
+            return verr
         if pickup_type not in valid_pickup:
             return f"取餐方式 '{pickup_type}' 无效，可选: {', '.join(sorted(valid_pickup))}。"
         if pickup_type == "外送" and not address_id:
@@ -500,20 +718,22 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter) -> FastMCP:
         if token_err:
             return token_err
         result = adapter.create_order(store_id, items, pickup_type,
-                                      user_id=default_user,
+                                      user_id=user_id,
                                       idempotency_key=idempotency_key,
                                       coupon_code=coupon_code,
                                       address_id=address_id)
         return fmt.format_order_created(result)
 
     @mcp.tool()
-    def order_status(order_id: str) -> str:
+    def order_status(ctx: Context, order_id: str) -> str:
         """查询订单状态详情。当用户问"我的订单怎么样了"、"做好了吗"时使用。
 
         Args:
             order_id: 订单号，从 create_order 或 my_orders 获取
         """
-        order = adapter.order_status(order_id, default_user)
+        user_id, err = _require_auth(ctx, "order_status")
+        if err: return err
+        order = adapter.order_status(order_id, user_id)
         if not order:
             return f"未找到订单 {order_id}。请检查订单号。"
         return fmt.format_order_status(order)

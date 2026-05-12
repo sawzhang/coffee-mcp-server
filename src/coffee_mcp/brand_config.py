@@ -51,6 +51,24 @@ class RateLimitConfig:
 
 
 @dataclass
+class OAuthConfig:
+    """OAuth 2.1 Resource Server config (Stage 1).
+
+    Each brand brings its own Authorization Server. When `use_mock_as` is True,
+    the MCP server's built-in mock AS is used for demo (see auth/mock_as.py).
+    """
+    issuer: str
+    authorization_endpoint: str
+    token_endpoint: str
+    jwks_uri: str | None = None
+    audience: str = ""
+    redirect_uri: str = ""
+    scopes_supported: list[str] = field(default_factory=list)
+    h5_login_url: str = ""
+    use_mock_as: bool = False
+
+
+@dataclass
 class BrandConfig:
     """Complete brand configuration loaded from YAML."""
     brand_id: str
@@ -81,6 +99,9 @@ class BrandConfig:
 
     # Brand directory for loading demo data
     brand_dir: Path | None = None
+
+    # OAuth 2.1 Resource Server config (None = auth disabled, stdio/demo mode)
+    oauth: OAuthConfig | None = None
 
 
 # Default rate limits
@@ -206,6 +227,22 @@ def load_brand_config(brand_id: str) -> BrandConfig:
     # Parse adapter config
     adapter_raw = raw.get("adapter", {})
 
+    # Parse OAuth config (optional — missing = stdio/demo mode)
+    oauth_raw = raw.get("oauth")
+    oauth_config: OAuthConfig | None = None
+    if oauth_raw:
+        oauth_config = OAuthConfig(
+            issuer=oauth_raw.get("issuer", ""),
+            authorization_endpoint=oauth_raw.get("authorization_endpoint", ""),
+            token_endpoint=oauth_raw.get("token_endpoint", ""),
+            jwks_uri=oauth_raw.get("jwks_uri"),
+            audience=oauth_raw.get("audience", ""),
+            redirect_uri=oauth_raw.get("redirect_uri", ""),
+            scopes_supported=oauth_raw.get("scopes_supported", []),
+            h5_login_url=oauth_raw.get("h5_login_url", ""),
+            use_mock_as=oauth_raw.get("use_mock_as", False),
+        )
+
     config = BrandConfig(
         brand_id=raw.get("brand_id", brand_id),
         brand_name=raw.get("brand_name", brand_id),
@@ -226,6 +263,7 @@ def load_brand_config(brand_id: str) -> BrandConfig:
         adapter_module=adapter_raw.get("module"),
         adapter_class=adapter_raw.get("class"),
         brand_dir=brand_dir,
+        oauth=oauth_config,
     )
     return config
 
