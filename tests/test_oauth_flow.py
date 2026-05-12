@@ -152,9 +152,8 @@ async def _walk_oauth_flow(base: str, scope: str | None = None) -> dict[str, Any
 
 async def _step_up(base: str, session_id: str, tool: str) -> None:
     async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
-        r = await client.get(f"{base}/h5/step_up",
-                             params={"session_id": session_id,
-                                     "tool": tool, "confirm": "yes"})
+        r = await client.post(f"{base}/h5/step_up",
+                              data={"session_id": session_id, "tool": tool})
         r.raise_for_status()
 
 
@@ -334,6 +333,69 @@ async def t_insufficient_scope_returns_elevation(ctx):
     assert "scope=read:orders" in body["continue_url"]
 
 
+async def t_step_up_get_escapes_xss_payload(ctx):
+    """h5_step_up GET must HTML-escape `tool` and `session_id` query params."""
+    session = ctx["store"].create()
+    payload = "<script>alert('xss')</script>"
+    async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
+        r = await client.get(
+            f"{ctx['base']}/h5/step_up",
+            params={"session_id": session.session_id, "tool": payload},
+        )
+        r.raise_for_status()
+        body = r.text
+    assert "<script>alert(" not in body, "raw <script> reflected — XSS open"
+    assert "&lt;script&gt;" in body, "expected escaped &lt;script&gt;"
+    # GET must NOT auto-confirm (CSRF defense)
+    sess = ctx["store"].get(session.session_id)
+    assert sess.auth_level.value != "step_up_verified", \
+        "GET should not have marked step-up"
+
+
+async def t_step_up_get_with_confirm_query_does_not_apply(ctx):
+    """Legacy `?confirm=yes` GET pattern must NOT mark step-up (CSRF defense)."""
+    session = ctx["store"].create()
+    async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
+        r = await client.get(
+            f"{ctx['base']}/h5/step_up",
+            params={"session_id": session.session_id, "tool": "create_order",
+                    "confirm": "yes"},
+        )
+        r.raise_for_status()
+    sess = ctx["store"].get(session.session_id)
+    assert sess.auth_level.value != "step_up_verified"
+
+
+async def t_h5_login_submit_ignores_evil_redirect_uri(ctx):
+    """Form-supplied redirect_uri must not override the brand-configured one."""
+    # Walk login_start to set PKCE state, then submit with a hostile redirect_uri.
+    async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
+        r = await client.get(f"{ctx['base']}/oauth/session/new")
+        sid = r.json()["session_id"]
+        r = await client.get(f"{ctx['base']}/oauth/login_start",
+                             params={"session_id": sid},
+                             follow_redirects=False)
+        assert r.status_code == 302
+        # follow to /mock-as/authorize → h5/login (capture state+challenge)
+        r2 = await client.get(r.headers["location"], follow_redirects=False)
+        h5_url = r2.headers["location"]
+        r3 = await client.get(h5_url)
+        form = {k: _extract_hidden(r3.text, k) for k in
+                ("state", "scope", "code_challenge")}
+        # Submit with attacker-controlled redirect_uri
+        r4 = await client.post(f"{ctx['base']}/h5/login/submit", data={
+            **form,
+            "redirect_uri": "https://evil.example/steal",
+            "phone": "13800001234",
+            "otp": "000000",
+        }, follow_redirects=False)
+        assert r4.status_code == 302, r4.text
+        loc = r4.headers["location"]
+    assert loc.startswith(ctx["config"].oauth.redirect_uri), \
+        f"redirect_uri override leaked through: {loc}"
+    assert "evil.example" not in loc
+
+
 # ---------------------------------------------------------------------------
 # Entry
 # ---------------------------------------------------------------------------
@@ -349,6 +411,9 @@ async def main() -> int:
         ("L3 without step-up → step_up url",       t_l3_without_step_up_returns_step_up_url),
         ("L3 after step-up passes guard",          t_l3_after_step_up_passes_auth_guard),
         ("Insufficient scope → elevation url",     t_insufficient_scope_returns_elevation),
+        ("step_up GET escapes XSS payload",        t_step_up_get_escapes_xss_payload),
+        ("step_up GET ?confirm=yes is inert",      t_step_up_get_with_confirm_query_does_not_apply),
+        ("h5_login_submit ignores evil redirect",  t_h5_login_submit_ignores_evil_redirect_uri),
     ]
     print(f"\nRunning {len(tests)} OAuth E2E tests against mock AS\n")
     result = TestResult()
