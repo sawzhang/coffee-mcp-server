@@ -9,12 +9,17 @@ dependencies = [
     "click>=8.1.0",
     "rich>=13.0.0",
     "pyyaml>=6.0",
+    "starlette>=0.40",
+    "uvicorn[standard]>=0.30",
+    "authlib>=1.3",
+    "itsdangerous>=2.2",
 ]
 
 [project.scripts]
 coffee-company-mcp = "coffee_mcp.server:main"
 coffee-company-toc = "coffee_mcp.toc_server:main"
 coffee-company-toc-http = "coffee_mcp.toc_server:main_http"
+coffee-company-toc-oauth = "coffee_mcp.auth.http_app:run"
 brand-init = "coffee_mcp.brand_init:init"
 coffee = "coffee_mcp.cli:cli"
 

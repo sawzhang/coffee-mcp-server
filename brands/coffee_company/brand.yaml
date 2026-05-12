@@ -19,6 +19,25 @@ instructions: |
 
 # Adapter: omitted = use DemoAdapter with built-in mock data
 
+# OAuth 2.1 (Stage 1) — used only by `coffee-company-toc-oauth` entry point.
+# Stdio entries (coffee-company-toc / coffee-company-toc-http) ignore this block.
+oauth:
+  use_mock_as: true
+  issuer: "http://localhost:8765/mock-as"
+  authorization_endpoint: "http://localhost:8765/mock-as/authorize"
+  token_endpoint: "http://localhost:8765/mock-as/token"
+  jwks_uri: null
+  audience: "mcp://coffee_company/toc"
+  redirect_uri: "http://localhost:8765/oauth/callback"
+  scopes_supported:
+    - "read:account"
+    - "read:orders"
+    - "read:rewards"
+    - "write:addresses"
+    - "write:orders"
+    - "redeem:stars"
+  h5_login_url: "http://localhost:8765/h5/login"
+
 validation:
   phone_pattern: "^1\\d{10}$"
   valid_sizes: ["tall", "grande", "venti"]
