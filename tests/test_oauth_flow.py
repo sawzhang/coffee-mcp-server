@@ -45,8 +45,10 @@ def _free_port() -> int:
 
 class _ServerThread:
     def __init__(self, app, host: str, port: int):
+        # proxy_headers=False so test clients can't bypass the rate limiter by
+        # setting X-Forwarded-For themselves (mirrors production default).
         cfg = uvicorn.Config(app, host=host, port=port, log_level="warning",
-                             lifespan="on")
+                             lifespan="on", proxy_headers=False)
         self.server = uvicorn.Server(cfg)
         self.thread = threading.Thread(target=self.server.run, daemon=True)
         self.host = host
@@ -445,6 +447,20 @@ async def t_ip_rate_limit_returns_429(ctx):
     assert blocked > 0, "no requests were rate-limited"
 
 
+async def t_ip_rate_limit_xff_does_not_bypass(ctx):
+    """Caller-supplied X-Forwarded-For must NOT bypass the per-IP limit when
+    the proxy isn't trusted (default). Otherwise any client could rotate the
+    header to enumerate sessions unbounded."""
+    blocked = 0
+    async with httpx.AsyncClient(trust_env=False, timeout=10) as c:
+        for i in range(15):
+            r = await c.get(f"{ctx['base']}/oauth/session/new",
+                            headers={"X-Forwarded-For": f"1.2.3.{i}"})
+            if r.status_code == 429:
+                blocked += 1
+    assert blocked > 0, "spoofed X-Forwarded-For bypassed the limit"
+
+
 async def t_jwt_validator_rejects_invalid_token(ctx):
     """validate_jwt path (real-AS branch) rejects malformed tokens cleanly."""
     from coffee_mcp.auth.jwt_validator import validate_jwt
@@ -564,6 +580,8 @@ async def main() -> int:
         ("Audit log records all outcomes",         t_audit_log_written,
          {"audit_path": audit_path}),
         ("IP rate limit returns 429",              t_ip_rate_limit_returns_429,
+         {"rl_max": 10, "rl_window": 60}),
+        ("IP rate limit XFF spoof rejected",       t_ip_rate_limit_xff_does_not_bypass,
          {"rl_max": 10, "rl_window": 60}),
         ("JWT validator rejects invalid token",    t_jwt_validator_rejects_invalid_token, None),
     ]

@@ -23,8 +23,21 @@ from ..brand_config import OAuthConfig
 
 _JWKS_CACHE: dict[str, tuple[float, Any]] = {}
 _JWKS_LOCK = threading.Lock()
+# Per-uri singleflight locks so that N concurrent requests crossing the cache
+# expiry only fire one JWKS refresh (rather than stampeding the AS).
+_JWKS_FETCH_LOCKS: dict[str, threading.Lock] = {}
+_JWKS_FETCH_LOCKS_GUARD = threading.Lock()
 _JWKS_TTL = 3600.0       # 1 hour
 _FETCH_TIMEOUT = 5.0
+
+
+def _fetch_lock_for(jwks_uri: str) -> threading.Lock:
+    with _JWKS_FETCH_LOCKS_GUARD:
+        lock = _JWKS_FETCH_LOCKS.get(jwks_uri)
+        if lock is None:
+            lock = threading.Lock()
+            _JWKS_FETCH_LOCKS[jwks_uri] = lock
+        return lock
 
 
 def _get_jwks(jwks_uri: str) -> Any:
@@ -32,7 +45,8 @@ def _get_jwks(jwks_uri: str) -> Any:
 
     Cache is process-local with 1h TTL. A failed refresh falls back to the
     last-known-good entry if available, so a transient AS hiccup doesn't
-    immediately deny every authenticated request.
+    immediately deny every authenticated request. Refreshes are serialized
+    per-URI to prevent a stampede when the cache expires.
     """
     now = time.monotonic()
     with _JWKS_LOCK:
@@ -40,21 +54,29 @@ def _get_jwks(jwks_uri: str) -> Any:
         if cached and (now - cached[0]) < _JWKS_TTL:
             return cached[1]
 
-    try:
-        resp = httpx.get(jwks_uri, timeout=_FETCH_TIMEOUT, trust_env=False)
-        resp.raise_for_status()
-        jwks = JsonWebKey.import_key_set(resp.json())
-    except Exception:
-        # Fall back to stale cache if available.
+    fetch_lock = _fetch_lock_for(jwks_uri)
+    with fetch_lock:
+        # Double-check: another thread may have refreshed while we waited.
         with _JWKS_LOCK:
             cached = _JWKS_CACHE.get(jwks_uri)
-            if cached:
+            if cached and (time.monotonic() - cached[0]) < _JWKS_TTL:
                 return cached[1]
-        raise
 
-    with _JWKS_LOCK:
-        _JWKS_CACHE[jwks_uri] = (now, jwks)
-    return jwks
+        try:
+            resp = httpx.get(jwks_uri, timeout=_FETCH_TIMEOUT, trust_env=False)
+            resp.raise_for_status()
+            jwks = JsonWebKey.import_key_set(resp.json())
+        except Exception:
+            # Fall back to stale cache if available.
+            with _JWKS_LOCK:
+                cached = _JWKS_CACHE.get(jwks_uri)
+                if cached:
+                    return cached[1]
+            raise
+
+        with _JWKS_LOCK:
+            _JWKS_CACHE[jwks_uri] = (time.monotonic(), jwks)
+        return jwks
 
 
 def validate_jwt(token: str, oauth: OAuthConfig) -> dict | None:

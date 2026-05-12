@@ -22,7 +22,9 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-_LOCK = threading.Lock()
+# RLock so that record() (which holds the lock) can call hash_member_id
+# (which acquires the lock for lazy salt init) without deadlocking.
+_LOCK = threading.RLock()
 _FH: Any = None
 _PATH: str | None = None
 _SALT: bytes | None = None
@@ -65,10 +67,15 @@ def _ensure_open() -> None:
 def hash_member_id(member_id: str | None) -> str | None:
     if not member_id:
         return None
-    if _SALT is None:
-        _ensure_open()
+    # Lazy salt init must be lock-protected: two concurrent callers could each
+    # observe _SALT is None, both enter _ensure_open(), and the second one
+    # reopens the file handle the first one is writing to.
+    with _LOCK:
+        if _SALT is None:
+            _ensure_open()
+        salt = _SALT or b""
     h = hashlib.sha256()
-    h.update(_SALT or b"")
+    h.update(salt)
     h.update(b":")
     h.update(member_id.encode("utf-8"))
     return h.hexdigest()

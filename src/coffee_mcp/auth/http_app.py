@@ -66,7 +66,12 @@ def run() -> None:
     import uvicorn
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "8765"))
-    uvicorn.run(build_app(), host=host, port=port)
+    # By default uvicorn rewrites request.client.host from X-Forwarded-For,
+    # which would let any client spoof its IP and bypass the per-IP limiter.
+    # Mirror our middleware-level trust flag.
+    trust_proxy = os.environ.get("COFFEE_TRUSTED_PROXY", "0") == "1"
+    uvicorn.run(build_app(), host=host, port=port,
+                proxy_headers=trust_proxy)
 
 
 if __name__ == "__main__":
