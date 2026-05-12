@@ -174,9 +174,8 @@ async def _walk_oauth_flow(base: str, scope: str | None = None) -> dict[str, Any
 
 async def _step_up(base: str, session_id: str, tool: str) -> None:
     async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
-        r = await client.get(f"{base}/h5/step_up",
-                             params={"session_id": session_id,
-                                     "tool": tool, "confirm": "yes"})
+        r = await client.post(f"{base}/h5/step_up",
+                              data={"session_id": session_id, "tool": tool})
         r.raise_for_status()
 
 
@@ -471,6 +470,71 @@ def _no_proxy_factory(*, headers=None, timeout=None, auth=None):
     return httpx.AsyncClient(**kwargs)
 
 
+# ---- PR#1 review fixes — XSS / CSRF / open-redirect regressions ----
+
+async def t_step_up_get_escapes_xss_payload(ctx):
+    """h5_step_up GET must HTML-escape `tool` and `session_id` query params."""
+    session = ctx["store"].create()
+    payload = "<script>alert('xss')</script>"
+    async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
+        r = await client.get(
+            f"{ctx['base']}/h5/step_up",
+            params={"session_id": session.session_id, "tool": payload},
+        )
+        r.raise_for_status()
+        body = r.text
+    assert "<script>alert(" not in body, "raw <script> reflected — XSS open"
+    assert "&lt;script&gt;" in body, "expected escaped &lt;script&gt;"
+    # GET must NOT auto-confirm (CSRF defense)
+    sess = ctx["store"].get(session.session_id)
+    assert sess.auth_level.value != "step_up_verified", \
+        "GET should not have marked step-up"
+
+
+async def t_step_up_get_with_confirm_query_does_not_apply(ctx):
+    """Legacy `?confirm=yes` GET pattern must NOT mark step-up (CSRF defense)."""
+    session = ctx["store"].create()
+    async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
+        r = await client.get(
+            f"{ctx['base']}/h5/step_up",
+            params={"session_id": session.session_id, "tool": "create_order",
+                    "confirm": "yes"},
+        )
+        r.raise_for_status()
+    sess = ctx["store"].get(session.session_id)
+    assert sess.auth_level.value != "step_up_verified"
+
+
+async def t_h5_login_submit_ignores_evil_redirect_uri(ctx):
+    """Form-supplied redirect_uri must not override the brand-configured one."""
+    # Walk login_start to set PKCE state, then submit with a hostile redirect_uri.
+    async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
+        r = await client.get(f"{ctx['base']}/oauth/session/new")
+        sid = r.json()["session_id"]
+        r = await client.get(f"{ctx['base']}/oauth/login_start",
+                             params={"session_id": sid},
+                             follow_redirects=False)
+        assert r.status_code == 302
+        # follow to /mock-as/authorize → h5/login (capture state+challenge)
+        r2 = await client.get(r.headers["location"], follow_redirects=False)
+        h5_url = r2.headers["location"]
+        r3 = await client.get(h5_url)
+        form = {k: _extract_hidden(r3.text, k) for k in
+                ("state", "scope", "code_challenge")}
+        # Submit with attacker-controlled redirect_uri
+        r4 = await client.post(f"{ctx['base']}/h5/login/submit", data={
+            **form,
+            "redirect_uri": "https://evil.example/steal",
+            "phone": "13800001234",
+            "otp": "000000",
+        }, follow_redirects=False)
+        assert r4.status_code == 302, r4.text
+        loc = r4.headers["location"]
+    assert loc.startswith(ctx["config"].oauth.redirect_uri), \
+        f"redirect_uri override leaked through: {loc}"
+    assert "evil.example" not in loc
+
+
 # ---------------------------------------------------------------------------
 # Entry
 # ---------------------------------------------------------------------------
@@ -482,22 +546,26 @@ async def main() -> int:
 
     # (name, coroutine, server_kwargs)
     tests = [
-        ("L0 tool works without token",         t_l0_tool_works_without_token, None),
-        ("L1 missing token → continue_url",     t_l1_missing_token_returns_continue_url, None),
-        ("Mock AS happy path",                  t_mock_as_happy_path, None),
-        ("L1 valid token succeeds",             t_l1_valid_token_succeeds, None),
-        ("L1 expired token → continue_url",     t_l1_expired_token_returns_continue_url, None),
-        ("L3 without step-up → step_up url",    t_l3_without_step_up_returns_step_up_url, None),
-        ("L3 after step-up passes guard",       t_l3_after_step_up_passes_auth_guard, None),
-        ("Insufficient scope → elevation url",  t_insufficient_scope_returns_elevation, None),
-        # Hardening
-        ("Anon session reused via X-Session-Id", t_anonymous_session_echo_reused, None),
-        ("Anon session LRU capped",              t_anonymous_session_capped, None),
-        ("Audit log records all outcomes",       t_audit_log_written,
+        ("L0 tool works without token",            t_l0_tool_works_without_token, None),
+        ("L1 missing token → continue_url",        t_l1_missing_token_returns_continue_url, None),
+        ("Mock AS happy path",                     t_mock_as_happy_path, None),
+        ("L1 valid token succeeds",                t_l1_valid_token_succeeds, None),
+        ("L1 expired token → continue_url",        t_l1_expired_token_returns_continue_url, None),
+        ("L3 without step-up → step_up url",       t_l3_without_step_up_returns_step_up_url, None),
+        ("L3 after step-up passes guard",          t_l3_after_step_up_passes_auth_guard, None),
+        ("Insufficient scope → elevation url",     t_insufficient_scope_returns_elevation, None),
+        # PR#1 review fixes — XSS / CSRF / open redirect
+        ("step_up GET escapes XSS payload",        t_step_up_get_escapes_xss_payload, None),
+        ("step_up GET ?confirm=yes is inert",      t_step_up_get_with_confirm_query_does_not_apply, None),
+        ("h5_login_submit ignores evil redirect",  t_h5_login_submit_ignores_evil_redirect_uri, None),
+        # Hardening (PR #2)
+        ("Anon session reused via X-Session-Id",   t_anonymous_session_echo_reused, None),
+        ("Anon session LRU capped",                t_anonymous_session_capped, None),
+        ("Audit log records all outcomes",         t_audit_log_written,
          {"audit_path": audit_path}),
-        ("IP rate limit returns 429",            t_ip_rate_limit_returns_429,
+        ("IP rate limit returns 429",              t_ip_rate_limit_returns_429,
          {"rl_max": 10, "rl_window": 60}),
-        ("JWT validator rejects invalid token",  t_jwt_validator_rejects_invalid_token, None),
+        ("JWT validator rejects invalid token",    t_jwt_validator_rejects_invalid_token, None),
     ]
     print(f"\nRunning {len(tests)} OAuth E2E tests against mock AS\n")
     result = TestResult()

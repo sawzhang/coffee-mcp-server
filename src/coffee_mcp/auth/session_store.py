@@ -217,7 +217,8 @@ def generate_pkce_pair() -> tuple[str, str]:
     """Return (verifier, S256_challenge) per RFC 7636."""
     import base64
     import hashlib
-    verifier = secrets.token_urlsafe(64)[:96]
+    # token_urlsafe(64) returns ~86 chars (within RFC 7636's 43-128 char range).
+    verifier = secrets.token_urlsafe(64)
     digest = hashlib.sha256(verifier.encode("ascii")).digest()
     challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
     return verifier, challenge
