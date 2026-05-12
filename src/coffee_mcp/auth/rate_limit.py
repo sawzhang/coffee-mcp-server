@@ -8,6 +8,9 @@ Defaults are intentionally generous (60 req/min per IP across guarded
 routes). Override via env vars:
   COFFEE_OAUTH_RL_MAX     — max calls per window (default 60)
   COFFEE_OAUTH_RL_WINDOW  — window seconds (default 60)
+  COFFEE_TRUSTED_PROXY    — "1" to honor X-Forwarded-For. Default off so
+                              callers can't spoof their IP by setting the
+                              header themselves.
 """
 
 from __future__ import annotations
@@ -43,11 +46,16 @@ class IPRateLimitMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app, max_calls: int | None = None,
                  window_seconds: int | None = None,
-                 guarded_prefixes: tuple[str, ...] = GUARDED_PREFIXES):
+                 guarded_prefixes: tuple[str, ...] = GUARDED_PREFIXES,
+                 trust_proxy: bool | None = None):
         super().__init__(app)
         self.max_calls = max_calls or int(os.environ.get("COFFEE_OAUTH_RL_MAX", "60"))
         self.window = window_seconds or int(os.environ.get("COFFEE_OAUTH_RL_WINDOW", "60"))
         self.prefixes = guarded_prefixes
+        # XFF must be opt-in: if any caller can set it, the limit is bypassable.
+        if trust_proxy is None:
+            trust_proxy = os.environ.get("COFFEE_TRUSTED_PROXY", "0") == "1"
+        self.trust_proxy = trust_proxy
         self._calls: dict[str, list[float]] = defaultdict(list)
         self._lock = threading.Lock()
         self._last_cleanup: float = 0.0
@@ -76,9 +84,19 @@ class IPRateLimitMiddleware(BaseHTTPMiddleware):
         if not self._is_guarded(request.url.path):
             return await call_next(request)
 
-        ip = request.headers.get("x-forwarded-for") or \
-             (request.client.host if request.client else "0.0.0.0")
-        ip = ip.split(",")[0].strip()
+        # X-Forwarded-For is a client-supplied header. Honoring it without an
+        # explicit proxy in front of us lets a caller spoof any IP and bypass
+        # the limit. Only read it when COFFEE_TRUSTED_PROXY is set.
+        # NOTE: uvicorn's proxy_headers=True (its default) will also rewrite
+        # request.client.host from XFF — the http_app.run() helper turns that
+        # off when trust_proxy is False.
+        ip = "0.0.0.0"
+        if self.trust_proxy:
+            xff = request.headers.get("x-forwarded-for")
+            if xff:
+                ip = xff.split(",")[0].strip()
+        if ip == "0.0.0.0" and request.client:
+            ip = request.client.host
         if not self._check(ip):
             return JSONResponse(
                 {"error": "rate_limited",

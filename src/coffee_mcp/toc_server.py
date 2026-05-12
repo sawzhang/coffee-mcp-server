@@ -323,7 +323,10 @@ def create_toc_server(config: BrandConfig, adapter: BrandAdapter,
                          session_id=sid, scope_used=required_scope, **meta)
             return None, _continue_url_json(session, required_scope, reason="需要登录")
 
-        if session.token_expires_at and session.token_expires_at <= time.monotonic():
+        # An authenticated session must have a future token_expires_at. Drop
+        # the truthy guard: 0.0 was treated as "never expires" before, which
+        # silently bypassed expiry checks for any broken-state session.
+        if session.token_expires_at <= time.monotonic():
             audit.record(tool=tool_name, result="denied_token_expired",
                          session_id=sid, member_id=session.member_id,
                          scope_used=required_scope, **meta)

@@ -32,8 +32,21 @@ _ALLOWED_ALGS: list[str] = ["RS256", "RS384", "RS512",
 
 _JWKS_CACHE: dict[str, tuple[float, KeySet]] = {}
 _JWKS_LOCK = threading.Lock()
+# Per-uri singleflight locks so that N concurrent requests crossing the cache
+# expiry only fire one JWKS refresh (rather than stampeding the AS).
+_JWKS_FETCH_LOCKS: dict[str, threading.Lock] = {}
+_JWKS_FETCH_LOCKS_GUARD = threading.Lock()
 _JWKS_TTL = 3600.0       # 1 hour
 _FETCH_TIMEOUT = 5.0
+
+
+def _fetch_lock_for(jwks_uri: str) -> threading.Lock:
+    with _JWKS_FETCH_LOCKS_GUARD:
+        lock = _JWKS_FETCH_LOCKS.get(jwks_uri)
+        if lock is None:
+            lock = threading.Lock()
+            _JWKS_FETCH_LOCKS[jwks_uri] = lock
+        return lock
 
 
 def _get_jwks(jwks_uri: str) -> KeySet:
@@ -41,7 +54,8 @@ def _get_jwks(jwks_uri: str) -> KeySet:
 
     Cache is process-local with 1h TTL. A failed refresh falls back to the
     last-known-good entry if available, so a transient AS hiccup doesn't
-    immediately deny every authenticated request.
+    immediately deny every authenticated request. Refreshes are serialized
+    per-URI to prevent a stampede when the cache expires.
     """
     now = time.monotonic()
     with _JWKS_LOCK:
@@ -49,20 +63,29 @@ def _get_jwks(jwks_uri: str) -> KeySet:
         if cached and (now - cached[0]) < _JWKS_TTL:
             return cached[1]
 
-    try:
-        resp = httpx.get(jwks_uri, timeout=_FETCH_TIMEOUT, trust_env=False)
-        resp.raise_for_status()
-        key_set = KeySet.import_key_set(resp.json())
-    except Exception:
+    fetch_lock = _fetch_lock_for(jwks_uri)
+    with fetch_lock:
+        # Double-check: another thread may have refreshed while we waited.
         with _JWKS_LOCK:
             cached = _JWKS_CACHE.get(jwks_uri)
-            if cached:
+            if cached and (time.monotonic() - cached[0]) < _JWKS_TTL:
                 return cached[1]
-        raise
 
-    with _JWKS_LOCK:
-        _JWKS_CACHE[jwks_uri] = (now, key_set)
-    return key_set
+        try:
+            resp = httpx.get(jwks_uri, timeout=_FETCH_TIMEOUT, trust_env=False)
+            resp.raise_for_status()
+            key_set = KeySet.import_key_set(resp.json())
+        except Exception:
+            # Fall back to stale cache if available.
+            with _JWKS_LOCK:
+                cached = _JWKS_CACHE.get(jwks_uri)
+                if cached:
+                    return cached[1]
+            raise
+
+        with _JWKS_LOCK:
+            _JWKS_CACHE[jwks_uri] = (time.monotonic(), key_set)
+        return key_set
 
 
 def validate_jwt(token: str, oauth: OAuthConfig) -> dict | None:
@@ -82,9 +105,9 @@ def validate_jwt(token: str, oauth: OAuthConfig) -> dict | None:
 
     try:
         decoded = jwt.decode(token, key_set, algorithms=_ALLOWED_ALGS)
-    except (JoseError, ValueError):
-        return None
     except Exception:
+        # joserfc raises JoseError (and ValueError on malformed tokens); both
+        # are subclasses of Exception. One except clause is sufficient.
         return None
 
     claims = decoded.claims
@@ -97,8 +120,6 @@ def validate_jwt(token: str, oauth: OAuthConfig) -> dict | None:
     registry = JWTClaimsRegistry(**claims_options)
     try:
         registry.validate(claims)
-    except JoseError:
-        return None
     except Exception:
         return None
 
@@ -117,6 +138,9 @@ def validate_jwt(token: str, oauth: OAuthConfig) -> dict | None:
     exp = claims.get("exp")
     if exp is None:
         return None
+    # `exp` from the JWT is wall-clock seconds; the session store treats the
+    # value as monotonic. Approximate by anchoring "now" in both clocks — close
+    # enough for the bounded token TTLs we accept.
     monotonic_exp = time.monotonic() + max(int(exp) - int(time.time()), 1)
 
     return {

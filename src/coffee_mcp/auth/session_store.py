@@ -12,6 +12,7 @@ import secrets
 import time
 import uuid
 from abc import ABC, abstractmethod
+from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -87,7 +88,8 @@ class InMemorySessionStore(SessionStore):
                  anonymous_ttl_seconds: int = 600,
                  max_anonymous: int = 5000):
         self._sessions: dict[str, Session] = {}
-        self._anonymous_sids: list[str] = []  # FIFO of anonymous-only ids
+        # FIFO of anonymous-only ids. deque for O(1) popleft (was list.pop(0)).
+        self._anonymous_sids: deque[str] = deque()
         self._ttl = ttl_seconds
         self._anonymous_ttl = anonymous_ttl_seconds
         self._max_anonymous = max_anonymous
@@ -101,11 +103,9 @@ class InMemorySessionStore(SessionStore):
         sid = f"sess_{uuid.uuid4().hex}"
         session = Session(session_id=sid)
         if short_ttl:
-            # Track for LRU eviction; mark by created_at offset so _is_expired
-            # picks the right ttl based on auth_level.
             self._anonymous_sids.append(sid)
             while len(self._anonymous_sids) > self._max_anonymous:
-                evict = self._anonymous_sids.pop(0)
+                evict = self._anonymous_sids.popleft()
                 self._sessions.pop(evict, None)
         self._sessions[sid] = session
         return session
@@ -189,8 +189,15 @@ class InMemorySessionStore(SessionStore):
     # ---- internals ----
 
     def _is_expired(self, s: Session) -> bool:
-        ttl = self._ttl if s.member_id else self._anonymous_ttl
-        return (time.monotonic() - s.last_active_at) > ttl
+        now = time.monotonic()
+        if s.member_id:
+            return (now - s.last_active_at) > self._ttl
+        # Anonymous sessions also enforce an absolute max-age from creation —
+        # otherwise a polling client could keep one alive forever and starve the
+        # LRU cap.
+        if (now - s.created_at) > self._anonymous_ttl:
+            return True
+        return (now - s.last_active_at) > self._anonymous_ttl
 
     def _maybe_cleanup(self) -> None:
         now = time.monotonic()
@@ -217,7 +224,8 @@ def generate_pkce_pair() -> tuple[str, str]:
     """Return (verifier, S256_challenge) per RFC 7636."""
     import base64
     import hashlib
-    verifier = secrets.token_urlsafe(64)[:96]
+    # token_urlsafe(64) returns ~86 chars (within RFC 7636's 43-128 char range).
+    verifier = secrets.token_urlsafe(64)
     digest = hashlib.sha256(verifier.encode("ascii")).digest()
     challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
     return verifier, challenge

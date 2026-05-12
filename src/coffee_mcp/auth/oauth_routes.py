@@ -5,6 +5,7 @@ Mounted by auth/http_app.py alongside FastMCP's streamable_http_app().
 
 from __future__ import annotations
 
+import html as html_lib
 import json
 import urllib.parse
 from typing import Any
@@ -190,7 +191,9 @@ def build_oauth_routes(config: BrandConfig,
         state = form.get("state") or ""
         scope = (form.get("scope") or "").split()
         challenge = form.get("code_challenge") or ""
-        redirect_uri = form.get("redirect_uri") or oauth.redirect_uri
+        # Open-redirect defense: ignore form-supplied redirect_uri.
+        # Only the brand-configured value is honored.
+        redirect_uri = oauth.redirect_uri
         if not mock_as:
             return _bad_request("mock AS not enabled")
         if not state or not challenge:
@@ -201,37 +204,51 @@ def build_oauth_routes(config: BrandConfig,
         return RedirectResponse(url, status_code=302)
 
     async def h5_step_up(request: Request) -> Response:
-        sid = request.query_params.get("session_id")
-        tool = request.query_params.get("tool", "")
-        confirm = request.query_params.get("confirm")
-        if not sid:
-            return _bad_request("missing session_id")
-        if confirm == "yes":
+        # GET renders the confirmation form; POST applies the step-up.
+        # POST-only commit defeats trivial CSRF (cross-site link can't auto-confirm).
+        if request.method == "POST":
+            form = await request.form()
+            sid = (form.get("session_id") or "").strip()
+            tool = (form.get("tool") or "").strip()
+            if not sid:
+                return _bad_request("missing session_id")
+            if store.get(sid) is None:
+                return _bad_request("unknown session")
             store.mark_step_up(sid, ttl=300)
             return HTMLResponse(
-                f"<h2>已确认 step-up</h2><p>5 分钟内可执行高敏操作：<code>{tool}</code></p>"
-                f"<p>回到对话再次发起即可。</p>"
+                "<h2>已确认 step-up</h2>"
+                f"<p>5 分钟内可执行高敏操作：<code>{html_lib.escape(tool)}</code></p>"
+                "<p>回到对话再次发起即可。</p>"
             )
-        html = f"""
+        sid = request.query_params.get("session_id") or ""
+        tool = request.query_params.get("tool", "")
+        if not sid:
+            return _bad_request("missing session_id")
+        sid_e = html_lib.escape(sid, quote=True)
+        tool_e = html_lib.escape(tool, quote=True)
+        brand_e = html_lib.escape(config.brand_name)
+        html_doc = f"""
         <!doctype html><html><body style="font-family:sans-serif;max-width:480px;margin:40px auto">
-        <h2>{config.brand_name} · 二次确认</h2>
-        <p>即将执行高敏操作：<b>{tool}</b></p>
+        <h2>{brand_e} · 二次确认</h2>
+        <p>即将执行高敏操作：<b>{tool_e}</b></p>
         <p>请确认这是你本人的操作。</p>
-        <p>
-          <a href="?session_id={sid}&tool={tool}&confirm=yes"
-             style="display:inline-block;padding:10px 24px;background:#0a7;color:#fff;text-decoration:none;border-radius:4px">
+        <form method="post" action="/h5/step_up">
+          <input type="hidden" name="session_id" value="{sid_e}">
+          <input type="hidden" name="tool" value="{tool_e}">
+          <button type="submit"
+             style="display:inline-block;padding:10px 24px;background:#0a7;color:#fff;border:0;border-radius:4px;font-size:14px;cursor:pointer">
             确认
-          </a>
+          </button>
           &nbsp;
-          <a href="/h5/done?session_id={sid}"
+          <a href="/h5/done?session_id={sid_e}"
              style="display:inline-block;padding:10px 24px;border:1px solid #ccc;text-decoration:none;border-radius:4px">
             取消
           </a>
-        </p>
+        </form>
         <p style="color:#888;font-size:12px;margin-top:24px">⚠️ 本对话由 AI 协助完成,请核对订单信息</p>
         </body></html>
         """
-        return HTMLResponse(html)
+        return HTMLResponse(html_doc)
 
     async def h5_done(request: Request) -> HTMLResponse:
         return HTMLResponse(
@@ -247,7 +264,7 @@ def build_oauth_routes(config: BrandConfig,
         Route("/oauth/login_start", login_start, methods=["GET"]),
         Route("/oauth/callback", oauth_callback, methods=["GET"]),
         Route("/h5/done", h5_done, methods=["GET"]),
-        Route("/h5/step_up", h5_step_up, methods=["GET"]),
+        Route("/h5/step_up", h5_step_up, methods=["GET", "POST"]),
     ]
 
     if mock_as is not None:
