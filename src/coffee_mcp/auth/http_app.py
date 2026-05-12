@@ -9,12 +9,14 @@ import contextlib
 import os
 
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
 from starlette.routing import Mount
 
 from ..brand_config import load_brand_adapter, load_brand_config
 from ..toc_server import create_toc_server
 from .mock_as import MockAS
 from .oauth_routes import build_oauth_routes
+from .rate_limit import IPRateLimitMiddleware
 from .session_store import InMemorySessionStore
 
 
@@ -51,7 +53,8 @@ def build_app(config=None, adapter=None) -> Starlette:
     routes = build_oauth_routes(config, store, mock_as)
     routes.append(Mount("/", app=mcp_app))
 
-    app = Starlette(routes=routes, lifespan=lifespan)
+    middleware = [Middleware(IPRateLimitMiddleware)]
+    app = Starlette(routes=routes, lifespan=lifespan, middleware=middleware)
     app.state.session_store = store
     app.state.mock_as = mock_as
     app.state.brand_config = config
@@ -63,7 +66,12 @@ def run() -> None:
     import uvicorn
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "8765"))
-    uvicorn.run(build_app(), host=host, port=port)
+    # By default uvicorn rewrites request.client.host from X-Forwarded-For,
+    # which would let any client spoof its IP and bypass the per-IP limiter.
+    # Mirror our middleware-level trust flag.
+    trust_proxy = os.environ.get("COFFEE_TRUSTED_PROXY", "0") == "1"
+    uvicorn.run(build_app(), host=host, port=port,
+                proxy_headers=trust_proxy)
 
 
 if __name__ == "__main__":

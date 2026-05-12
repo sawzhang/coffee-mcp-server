@@ -12,11 +12,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import socket
 import sys
+import tempfile
 import threading
 import time
 import traceback
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -24,6 +27,7 @@ import uvicorn
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
+from coffee_mcp.auth import audit
 from coffee_mcp.auth.http_app import build_app
 from coffee_mcp.brand_config import load_brand_adapter, load_brand_config
 
@@ -41,8 +45,10 @@ def _free_port() -> int:
 
 class _ServerThread:
     def __init__(self, app, host: str, port: int):
+        # proxy_headers=False so test clients can't bypass the rate limiter by
+        # setting X-Forwarded-For themselves (mirrors production default).
         cfg = uvicorn.Config(app, host=host, port=port, log_level="warning",
-                             lifespan="on")
+                             lifespan="on", proxy_headers=False)
         self.server = uvicorn.Server(cfg)
         self.thread = threading.Thread(target=self.server.run, daemon=True)
         self.host = host
@@ -62,8 +68,25 @@ class _ServerThread:
         self.thread.join(timeout=5)
 
 
-def _fresh_server() -> tuple[_ServerThread, dict]:
-    """Per-test fresh server (new port, new app, new session store)."""
+def _fresh_server(audit_path: str | None = None,
+                  rl_max: int | None = None,
+                  rl_window: int | None = None) -> tuple[_ServerThread, dict]:
+    """Per-test fresh server (new port, new app, new session store).
+
+    Optional overrides:
+      audit_path  → COFFEE_AUDIT_LOG for this run
+      rl_max      → COFFEE_OAUTH_RL_MAX for this run
+      rl_window   → COFFEE_OAUTH_RL_WINDOW for this run
+    """
+    if audit_path is not None:
+        os.environ["COFFEE_AUDIT_LOG"] = audit_path
+        os.environ["COFFEE_AUDIT_SALT"] = "test-salt"
+        audit.close()  # force the writer to reopen at the new path
+    if rl_max is not None:
+        os.environ["COFFEE_OAUTH_RL_MAX"] = str(rl_max)
+    if rl_window is not None:
+        os.environ["COFFEE_OAUTH_RL_WINDOW"] = str(rl_window)
+
     port = _free_port()
     base = f"http://127.0.0.1:{port}"
 
@@ -86,6 +109,7 @@ def _fresh_server() -> tuple[_ServerThread, dict]:
         "store": app.state.session_store,
         "mock_as": app.state.mock_as,
         "config": config,
+        "audit_path": audit_path,
     }
     return srv, ctx
 
@@ -207,8 +231,9 @@ class TestResult:
         return 0 if self.failed == 0 else 1
 
 
-async def run_one(name: str, coro_factory, result: TestResult) -> None:
-    srv, ctx = _fresh_server()
+async def run_one(name: str, coro_factory, result: TestResult,
+                  server_kwargs: dict | None = None) -> None:
+    srv, ctx = _fresh_server(**(server_kwargs or {}))
     print(f"  • {name} ...", end=" ", flush=True)
     try:
         await coro_factory(ctx)
@@ -224,6 +249,7 @@ async def run_one(name: str, coro_factory, result: TestResult) -> None:
         result.errors.append((name, traceback.format_exc()))
     finally:
         srv.stop()
+        audit.close()
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +359,135 @@ async def t_insufficient_scope_returns_elevation(ctx):
     assert "scope=read:orders" in body["continue_url"]
 
 
+# ---- Hardening tests (PR #2) ----
+
+async def _post_form(client, url, data):
+    return await client.post(url, data=data, follow_redirects=False)
+
+
+async def t_anonymous_session_echo_reused(ctx):
+    """Client that echoes session_id via X-Session-Id should NOT create new sessions."""
+    # First anonymous call mints one session.
+    text = await _call_tool(ctx["base"], "my_account")
+    body = json.loads(text)
+    sid = body["session_id"]
+    assert sid, body
+    before = ctx["store"].stats()
+
+    # Three more calls echoing the same session_id — store size must not grow.
+    async with httpx.AsyncClient(trust_env=False, timeout=10) as c:
+        # Use the streamable client through a custom call that forwards X-Session-Id
+        # Simpler: call via httpx directly to the MCP endpoint isn't easy. Use the
+        # MCP client and add the X-Session-Id header.
+        pass
+    # Use streamablehttp_client with X-Session-Id header
+    for _ in range(3):
+        async with streamablehttp_client(
+                f"{ctx['base']}/mcp",
+                headers={"X-Session-Id": sid},
+                httpx_client_factory=_no_proxy_factory) as (read, write, _):
+            async with ClientSession(read, write) as s:
+                await s.initialize()
+                await s.call_tool("my_account", {})
+
+    after = ctx["store"].stats()
+    # Anonymous count must not have grown (within tolerance of 0).
+    assert after["anonymous"] <= before["anonymous"], (before, after)
+
+
+async def t_anonymous_session_capped(ctx):
+    """LRU cap evicts oldest anonymous sessions once max is reached.
+
+    Uses the store's stats() to read total anonymous count without going
+    through HTTP (which would also bump the IP rate limiter).
+    """
+    store = ctx["store"]
+    # Force a low cap for this test.
+    store._max_anonymous = 5
+    for _ in range(20):
+        store.create(short_ttl=True)
+    stats = store.stats()
+    assert stats["anonymous"] <= 5, stats
+
+
+async def t_audit_log_written(ctx):
+    """Successful + denied flows produce JSONL records with required fields."""
+    # Anonymous L1 → denied_anonymous
+    await _call_tool(ctx["base"], "my_account")
+    # Public L0 → granted_l0_public
+    await _call_tool(ctx["base"], "now_time_info")
+    # Full flow + authenticated L1 → granted
+    flow = await _walk_oauth_flow(ctx["base"])
+    await _call_tool(ctx["base"], "my_account", token=flow["access_token"])
+
+    audit.close()
+    text = Path(ctx["audit_path"]).read_text(encoding="utf-8")
+    entries = [json.loads(l) for l in text.splitlines() if l.strip()]
+    assert len(entries) >= 3, entries
+    results = {e["result"] for e in entries}
+    assert "denied_anonymous" in results, results
+    assert "granted_l0_public" in results, results
+    assert "granted" in results, results
+
+    # member_id_hash is never plaintext — should be hex sha256 (64 chars) or None
+    for e in entries:
+        if e.get("member_id_hash"):
+            assert len(e["member_id_hash"]) == 64
+            assert all(c in "0123456789abcdef" for c in e["member_id_hash"])
+
+
+async def t_ip_rate_limit_returns_429(ctx):
+    """Burst /oauth/session/new past the configured cap → 429 from some point."""
+    blocked = 0
+    async with httpx.AsyncClient(trust_env=False, timeout=10) as c:
+        for _ in range(15):
+            r = await c.get(f"{ctx['base']}/oauth/session/new")
+            if r.status_code == 429:
+                blocked += 1
+    assert blocked > 0, "no requests were rate-limited"
+
+
+async def t_ip_rate_limit_xff_does_not_bypass(ctx):
+    """Caller-supplied X-Forwarded-For must NOT bypass the per-IP limit when
+    the proxy isn't trusted (default). Otherwise any client could rotate the
+    header to enumerate sessions unbounded."""
+    blocked = 0
+    async with httpx.AsyncClient(trust_env=False, timeout=10) as c:
+        for i in range(15):
+            r = await c.get(f"{ctx['base']}/oauth/session/new",
+                            headers={"X-Forwarded-For": f"1.2.3.{i}"})
+            if r.status_code == 429:
+                blocked += 1
+    assert blocked > 0, "spoofed X-Forwarded-For bypassed the limit"
+
+
+async def t_jwt_validator_rejects_invalid_token(ctx):
+    """validate_jwt path (real-AS branch) rejects malformed tokens cleanly."""
+    from coffee_mcp.auth.jwt_validator import validate_jwt
+    from coffee_mcp.brand_config import OAuthConfig
+    fake_oauth = OAuthConfig(
+        issuer="https://fake.example/iss",
+        authorization_endpoint="https://fake.example/authorize",
+        token_endpoint="https://fake.example/token",
+        jwks_uri="https://fake.example/.well-known/jwks.json",
+        audience="mcp://fake",
+        use_mock_as=False,
+    )
+    # JWKS fetch will fail (network), validator must return None, not raise.
+    assert validate_jwt("not-a-real-token", fake_oauth) is None
+
+
+def _no_proxy_factory(*, headers=None, timeout=None, auth=None):
+    kwargs = {"trust_env": False, "headers": headers}
+    if timeout is not None:
+        kwargs["timeout"] = timeout
+    if auth is not None:
+        kwargs["auth"] = auth
+    return httpx.AsyncClient(**kwargs)
+
+
+# ---- PR#1 review fixes — XSS / CSRF / open-redirect regressions ----
+
 async def t_step_up_get_escapes_xss_payload(ctx):
     """h5_step_up GET must HTML-escape `tool` and `session_id` query params."""
     session = ctx["store"].create()
@@ -402,23 +557,43 @@ async def t_h5_login_submit_ignores_evil_redirect_uri(ctx):
 
 
 async def main() -> int:
+    tmpdir = tempfile.mkdtemp(prefix="coffee-audit-")
+    audit_path = str(Path(tmpdir) / "audit.jsonl")
+
+    # (name, coroutine, server_kwargs)
     tests = [
-        ("L0 tool works without token",            t_l0_tool_works_without_token),
-        ("L1 missing token → continue_url",        t_l1_missing_token_returns_continue_url),
-        ("Mock AS happy path",                     t_mock_as_happy_path),
-        ("L1 valid token succeeds",                t_l1_valid_token_succeeds),
-        ("L1 expired token → continue_url",        t_l1_expired_token_returns_continue_url),
-        ("L3 without step-up → step_up url",       t_l3_without_step_up_returns_step_up_url),
-        ("L3 after step-up passes guard",          t_l3_after_step_up_passes_auth_guard),
-        ("Insufficient scope → elevation url",     t_insufficient_scope_returns_elevation),
-        ("step_up GET escapes XSS payload",        t_step_up_get_escapes_xss_payload),
-        ("step_up GET ?confirm=yes is inert",      t_step_up_get_with_confirm_query_does_not_apply),
-        ("h5_login_submit ignores evil redirect",  t_h5_login_submit_ignores_evil_redirect_uri),
+        ("L0 tool works without token",            t_l0_tool_works_without_token, None),
+        ("L1 missing token → continue_url",        t_l1_missing_token_returns_continue_url, None),
+        ("Mock AS happy path",                     t_mock_as_happy_path, None),
+        ("L1 valid token succeeds",                t_l1_valid_token_succeeds, None),
+        ("L1 expired token → continue_url",        t_l1_expired_token_returns_continue_url, None),
+        ("L3 without step-up → step_up url",       t_l3_without_step_up_returns_step_up_url, None),
+        ("L3 after step-up passes guard",          t_l3_after_step_up_passes_auth_guard, None),
+        ("Insufficient scope → elevation url",     t_insufficient_scope_returns_elevation, None),
+        # PR#1 review fixes — XSS / CSRF / open redirect
+        ("step_up GET escapes XSS payload",        t_step_up_get_escapes_xss_payload, None),
+        ("step_up GET ?confirm=yes is inert",      t_step_up_get_with_confirm_query_does_not_apply, None),
+        ("h5_login_submit ignores evil redirect",  t_h5_login_submit_ignores_evil_redirect_uri, None),
+        # Hardening (PR #2)
+        ("Anon session reused via X-Session-Id",   t_anonymous_session_echo_reused, None),
+        ("Anon session LRU capped",                t_anonymous_session_capped, None),
+        ("Audit log records all outcomes",         t_audit_log_written,
+         {"audit_path": audit_path}),
+        ("IP rate limit returns 429",              t_ip_rate_limit_returns_429,
+         {"rl_max": 10, "rl_window": 60}),
+        ("IP rate limit XFF spoof rejected",       t_ip_rate_limit_xff_does_not_bypass,
+         {"rl_max": 10, "rl_window": 60}),
+        ("JWT validator rejects invalid token",    t_jwt_validator_rejects_invalid_token, None),
     ]
     print(f"\nRunning {len(tests)} OAuth E2E tests against mock AS\n")
     result = TestResult()
-    for name, fn in tests:
-        await run_one(name, fn, result)
+    for name, fn, kw in tests:
+        # Each test gets a fresh audit file unless it cares about contents
+        per_test_kw = dict(kw or {})
+        if "audit_path" not in per_test_kw:
+            per_test_kw["audit_path"] = str(
+                Path(tmpdir) / f"audit-{result.passed+result.failed}.jsonl")
+        await run_one(name, fn, result, server_kwargs=per_test_kw)
     return result.report()
 
 
