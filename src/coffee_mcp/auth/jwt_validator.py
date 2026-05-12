@@ -2,7 +2,7 @@
 
 Used when `BrandConfig.oauth.jwks_uri` is set (i.e. `use_mock_as=False`).
 Fetches the AS's JWKS, caches it in process memory with a 1 hour TTL, and
-validates the access token via authlib.
+validates the access token via joserfc.
 
 Returns the same dict shape as MockAS.introspect() so toc_server.py's
 auth path is uniform: {member_id, scope: set[str], exp: float}.
@@ -10,25 +10,34 @@ auth path is uniform: {member_id, scope: set[str], exp: float}.
 
 from __future__ import annotations
 
-import json
 import threading
 import time
 from typing import Any
 
 import httpx
-from authlib.jose import JsonWebKey, JoseError, jwt
+from joserfc import jwt
+from joserfc.errors import JoseError
+from joserfc.jwk import KeySet
+from joserfc.jwt import JWTClaimsRegistry
 
 from ..brand_config import OAuthConfig
 
 
-_JWKS_CACHE: dict[str, tuple[float, Any]] = {}
+# Asymmetric algorithms only. HS256 is rejected because it implies a shared
+# secret an AS would never publish via jwks_uri.
+_ALLOWED_ALGS: list[str] = ["RS256", "RS384", "RS512",
+                            "ES256", "ES384", "ES512",
+                            "PS256", "PS384", "PS512",
+                            "EdDSA"]
+
+_JWKS_CACHE: dict[str, tuple[float, KeySet]] = {}
 _JWKS_LOCK = threading.Lock()
 _JWKS_TTL = 3600.0       # 1 hour
 _FETCH_TIMEOUT = 5.0
 
 
-def _get_jwks(jwks_uri: str) -> Any:
-    """Return a cached JsonWebKey set for jwks_uri.
+def _get_jwks(jwks_uri: str) -> KeySet:
+    """Return a cached KeySet for jwks_uri.
 
     Cache is process-local with 1h TTL. A failed refresh falls back to the
     last-known-good entry if available, so a transient AS hiccup doesn't
@@ -43,9 +52,8 @@ def _get_jwks(jwks_uri: str) -> Any:
     try:
         resp = httpx.get(jwks_uri, timeout=_FETCH_TIMEOUT, trust_env=False)
         resp.raise_for_status()
-        jwks = JsonWebKey.import_key_set(resp.json())
+        key_set = KeySet.import_key_set(resp.json())
     except Exception:
-        # Fall back to stale cache if available.
         with _JWKS_LOCK:
             cached = _JWKS_CACHE.get(jwks_uri)
             if cached:
@@ -53,34 +61,42 @@ def _get_jwks(jwks_uri: str) -> Any:
         raise
 
     with _JWKS_LOCK:
-        _JWKS_CACHE[jwks_uri] = (now, jwks)
-    return jwks
+        _JWKS_CACHE[jwks_uri] = (now, key_set)
+    return key_set
 
 
 def validate_jwt(token: str, oauth: OAuthConfig) -> dict | None:
     """Validate `token` against the brand's AS. Returns introspection dict or None.
 
-    Validates issuer, audience, and expiration. Scope is read from either
-    `scope` (space-separated) or `scp` (array) claims — common conventions.
-    `sub` becomes the member_id.
+    Validates issuer, audience, exp, and signature with the AS's JWKS.
+    `sub` (or `member_id`) → member_id; `scope` (space-separated) / `scp`
+    (array) → scope set.
     """
     if not oauth.jwks_uri:
         return None
 
     try:
-        jwks = _get_jwks(oauth.jwks_uri)
+        key_set = _get_jwks(oauth.jwks_uri)
     except Exception:
         return None
 
-    claims_options = {
+    try:
+        decoded = jwt.decode(token, key_set, algorithms=_ALLOWED_ALGS)
+    except (JoseError, ValueError):
+        return None
+    except Exception:
+        return None
+
+    claims = decoded.claims
+    claims_options: dict[str, Any] = {
         "iss": {"essential": True, "value": oauth.issuer},
+        "exp": {"essential": True},
     }
     if oauth.audience:
         claims_options["aud"] = {"essential": True, "value": oauth.audience}
-
+    registry = JWTClaimsRegistry(**claims_options)
     try:
-        claims = jwt.decode(token, jwks, claims_options=claims_options)
-        claims.validate()
+        registry.validate(claims)
     except JoseError:
         return None
     except Exception:
@@ -101,9 +117,6 @@ def validate_jwt(token: str, oauth: OAuthConfig) -> dict | None:
     exp = claims.get("exp")
     if exp is None:
         return None
-    # Convert wall-clock exp → monotonic-ish; we just need a deadline relative
-    # to time.monotonic() that's roughly correct. The store treats exp as
-    # monotonic; ok to approximate because token TTLs are bounded.
     monotonic_exp = time.monotonic() + max(int(exp) - int(time.time()), 1)
 
     return {

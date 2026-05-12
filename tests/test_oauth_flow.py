@@ -462,6 +462,81 @@ async def t_jwt_validator_rejects_invalid_token(ctx):
     assert validate_jwt("not-a-real-token", fake_oauth) is None
 
 
+async def t_jwt_validator_accepts_signed_token(ctx):
+    """Sign a token with a generated key, expose JWKS on a local Starlette
+    app, and verify validate_jwt accepts it and rejects tampered variants."""
+    import time as _t
+    import json as _j
+    from joserfc import jwt as _jwt
+    from joserfc.jwk import RSAKey, KeySet
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse
+    from starlette.routing import Route
+
+    from coffee_mcp.auth.jwt_validator import clear_cache, validate_jwt
+    from coffee_mcp.brand_config import OAuthConfig
+
+    key = RSAKey.generate_key(2048, parameters={"kid": "test-key-1"}, private=True)
+    public_jwks = KeySet([key]).as_dict(private=False)
+
+    async def jwks_endpoint(request):
+        return JSONResponse(public_jwks)
+
+    jwks_app = Starlette(routes=[Route("/jwks.json", jwks_endpoint)])
+    port = _free_port()
+    srv = _ServerThread(jwks_app, "127.0.0.1", port)
+    srv.start()
+    try:
+        oauth = OAuthConfig(
+            issuer="https://brand.example/iss",
+            authorization_endpoint="x",
+            token_endpoint="y",
+            jwks_uri=f"http://127.0.0.1:{port}/jwks.json",
+            audience="mcp://brand-app",
+            use_mock_as=False,
+        )
+
+        now = int(_t.time())
+        claims = {
+            "iss": "https://brand.example/iss",
+            "aud": "mcp://brand-app",
+            "sub": "MEMBER_42",
+            "exp": now + 600,
+            "iat": now,
+            "scope": "read:account read:orders",
+        }
+        good_token = _jwt.encode({"alg": "RS256", "kid": "test-key-1"},
+                                 claims, key)
+
+        clear_cache()
+        info = validate_jwt(good_token, oauth)
+        assert info is not None, "valid token should be accepted"
+        assert info["member_id"] == "MEMBER_42"
+        assert info["scope"] == {"read:account", "read:orders"}
+        assert info["exp"] > _t.monotonic()
+
+        # Wrong audience → rejected
+        bad_aud = _jwt.encode({"alg": "RS256", "kid": "test-key-1"},
+                              {**claims, "aud": "mcp://other"}, key)
+        assert validate_jwt(bad_aud, oauth) is None
+
+        # Expired → rejected
+        expired = _jwt.encode({"alg": "RS256", "kid": "test-key-1"},
+                              {**claims, "exp": now - 10}, key)
+        assert validate_jwt(expired, oauth) is None
+
+        # Token signed by a different key → rejected
+        other_key = RSAKey.generate_key(2048, parameters={"kid": "test-key-1"},
+                                        private=True)
+        wrong_sig = _jwt.encode({"alg": "RS256", "kid": "test-key-1"},
+                                claims, other_key)
+        clear_cache()  # force fresh JWKS fetch so we're comparing right key
+        assert validate_jwt(wrong_sig, oauth) is None
+    finally:
+        srv.stop()
+        clear_cache()
+
+
 def _no_proxy_factory(*, headers=None, timeout=None, auth=None):
     kwargs = {"trust_env": False, "headers": headers}
     if timeout is not None:
@@ -498,6 +573,7 @@ async def main() -> int:
         ("IP rate limit returns 429",            t_ip_rate_limit_returns_429,
          {"rl_max": 10, "rl_window": 60}),
         ("JWT validator rejects invalid token",  t_jwt_validator_rejects_invalid_token, None),
+        ("JWT validator accepts signed token",   t_jwt_validator_accepts_signed_token, None),
     ]
     print(f"\nRunning {len(tests)} OAuth E2E tests against mock AS\n")
     result = TestResult()
