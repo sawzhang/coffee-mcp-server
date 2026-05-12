@@ -10,13 +10,15 @@ auth path is uniform: {member_id, scope: set[str], exp: float}.
 
 from __future__ import annotations
 
+import ipaddress
+import socket
 import threading
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from joserfc import jwt
-from joserfc.errors import JoseError
 from joserfc.jwk import KeySet
 from joserfc.jwt import JWTClaimsRegistry
 
@@ -49,6 +51,44 @@ def _fetch_lock_for(jwks_uri: str) -> threading.Lock:
         return lock
 
 
+def _is_blocked_address(host: str) -> bool:
+    """Return True if `host` resolves to an SSRF-sensitive range.
+
+    Blocks link-local (169.254/16 — covers AWS/GCP/Alibaba metadata IPs) and
+    other unspecified/reserved ranges. Loopback (127.0.0.0/8, ::1) is allowed
+    because brand AS may legitimately run on the same host in dev/preview
+    deployments — operators control brand.yaml.
+    """
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        # Unresolvable host — let the actual HTTP fetch error out cleanly.
+        return False
+    for info in infos:
+        try:
+            addr = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            continue
+        if addr.is_link_local or addr.is_multicast or addr.is_unspecified \
+                or addr.is_reserved:
+            return True
+    return False
+
+
+def _check_jwks_uri_safe(jwks_uri: str) -> bool:
+    """Reject obviously unsafe jwks_uri values to limit the SSRF surface.
+
+    Brand yaml is operator-controlled and therefore trusted, but a careless
+    paste of an internal URL (cloud metadata, file://) shouldn't fetch.
+    """
+    parsed = urlparse(jwks_uri)
+    if parsed.scheme not in ("http", "https"):
+        return False
+    if not parsed.hostname:
+        return False
+    return not _is_blocked_address(parsed.hostname)
+
+
 def _get_jwks(jwks_uri: str) -> KeySet:
     """Return a cached KeySet for jwks_uri.
 
@@ -57,6 +97,9 @@ def _get_jwks(jwks_uri: str) -> KeySet:
     immediately deny every authenticated request. Refreshes are serialized
     per-URI to prevent a stampede when the cache expires.
     """
+    if not _check_jwks_uri_safe(jwks_uri):
+        raise ValueError(f"jwks_uri rejected by SSRF filter: {jwks_uri}")
+
     now = time.monotonic()
     with _JWKS_LOCK:
         cached = _JWKS_CACHE.get(jwks_uri)

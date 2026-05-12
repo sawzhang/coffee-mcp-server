@@ -477,6 +477,116 @@ async def t_jwt_validator_rejects_invalid_token(ctx):
     assert validate_jwt("not-a-real-token", fake_oauth) is None
 
 
+async def t_jwt_validator_rejects_hs256(ctx):
+    """HS256 must be rejected (asymmetric-only). A symmetric secret would
+    never be reachable through a brand AS's published JWKS, and accepting
+    one opens the door to JWKS confusion attacks."""
+    from joserfc import jwt as _jwt
+    from joserfc.jwk import OctKey
+
+    from coffee_mcp.auth.jwt_validator import (
+        _ALLOWED_ALGS, clear_cache, validate_jwt,
+    )
+    from coffee_mcp.brand_config import OAuthConfig
+
+    assert "HS256" not in _ALLOWED_ALGS, "HS256 must not be in the allow-list"
+
+    # Forge an HS256 token with a random secret. Even if it landed in the
+    # JWKS cache somehow, validate_jwt must refuse the alg.
+    key = OctKey.generate_key(256, parameters={"kid": "evil-hs"}, private=True)
+    forged = _jwt.encode({"alg": "HS256", "kid": "evil-hs"},
+                         {"iss": "https://brand.example/iss",
+                          "aud": "mcp://brand-app",
+                          "sub": "MEMBER_99",
+                          "exp": int(time.time()) + 600},
+                         key)
+    oauth = OAuthConfig(
+        issuer="https://brand.example/iss",
+        authorization_endpoint="x",
+        token_endpoint="y",
+        jwks_uri="https://127.0.0.1:1/jwks.json",
+        audience="mcp://brand-app",
+        use_mock_as=False,
+    )
+    clear_cache()
+    assert validate_jwt(forged, oauth) is None, \
+        "HS256 token was accepted — alg confusion is open"
+
+
+async def t_jwks_uri_ssrf_metadata_blocked(ctx):
+    """jwks_uri pointing at cloud-metadata IP (169.254.x.x) must be refused
+    by _get_jwks before any network fetch."""
+    from coffee_mcp.auth.jwt_validator import _check_jwks_uri_safe, _get_jwks
+
+    # Cloud metadata IPs sit inside 169.254/16 (link-local).
+    assert not _check_jwks_uri_safe("http://169.254.169.254/latest/meta-data/")
+    assert not _check_jwks_uri_safe("http://169.254.169.254/.well-known/jwks.json")
+    # Non-http schemes blocked
+    assert not _check_jwks_uri_safe("file:///etc/passwd")
+    assert not _check_jwks_uri_safe("gopher://evil.example/")
+    # Real https URLs still allowed
+    assert _check_jwks_uri_safe("https://example.com/.well-known/jwks.json")
+    # Loopback still allowed (operators may run a brand AS locally)
+    assert _check_jwks_uri_safe("http://127.0.0.1:9000/jwks.json")
+
+    # _get_jwks raises on a blocked URI rather than performing the fetch
+    raised = False
+    try:
+        _get_jwks("http://169.254.169.254/jwks.json")
+    except ValueError:
+        raised = True
+    assert raised, "_get_jwks should refuse the link-local IP"
+
+
+async def t_jwt_scp_array_claim(ctx):
+    """Tokens using the array `scp` claim (RFC 8693 style) must yield the
+    same scope set as space-separated `scope`."""
+    from joserfc import jwt as _jwt
+    from joserfc.jwk import RSAKey, KeySet
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse
+    from starlette.routing import Route
+
+    from coffee_mcp.auth.jwt_validator import clear_cache, validate_jwt
+    from coffee_mcp.brand_config import OAuthConfig
+
+    key = RSAKey.generate_key(2048, parameters={"kid": "scp-key"}, private=True)
+    jwks_doc = KeySet([key]).as_dict(private=False)
+
+    async def jwks_endpoint(request):
+        return JSONResponse(jwks_doc)
+
+    jwks_app = Starlette(routes=[Route("/jwks.json", jwks_endpoint)])
+    port = _free_port()
+    srv = _ServerThread(jwks_app, "127.0.0.1", port)
+    srv.start()
+    try:
+        oauth = OAuthConfig(
+            issuer="https://brand.example/iss",
+            authorization_endpoint="x",
+            token_endpoint="y",
+            jwks_uri=f"http://127.0.0.1:{port}/jwks.json",
+            audience="mcp://brand-app",
+            use_mock_as=False,
+        )
+        now = int(time.time())
+        # Use `scp` (array) instead of `scope` (space-string)
+        token = _jwt.encode({"alg": "RS256", "kid": "scp-key"}, {
+            "iss": "https://brand.example/iss",
+            "aud": "mcp://brand-app",
+            "sub": "MEMBER_SCP",
+            "exp": now + 600,
+            "iat": now,
+            "scp": ["read:account", "write:orders"],
+        }, key)
+        clear_cache()
+        info = validate_jwt(token, oauth)
+        assert info is not None, "scp-array token rejected"
+        assert info["scope"] == {"read:account", "write:orders"}, info
+    finally:
+        srv.stop()
+
+
 async def t_jwt_validator_accepts_signed_token(ctx):
     """Sign a token with a generated key, expose JWKS on a local Starlette
     app, and verify validate_jwt accepts it and rejects tampered variants."""
@@ -659,6 +769,9 @@ async def main() -> int:
         ("IP rate limit XFF spoof rejected",       t_ip_rate_limit_xff_does_not_bypass,
          {"rl_max": 10, "rl_window": 60}),
         ("JWT validator rejects invalid token",    t_jwt_validator_rejects_invalid_token, None),
+        ("JWT validator rejects HS256",            t_jwt_validator_rejects_hs256, None),
+        ("JWT scp array claim parsed",             t_jwt_scp_array_claim, None),
+        ("JWKS URI SSRF metadata blocked",         t_jwks_uri_ssrf_metadata_blocked, None),
         ("JWT validator accepts signed token",     t_jwt_validator_accepts_signed_token, None),
     ]
     print(f"\nRunning {len(tests)} OAuth E2E tests against mock AS\n")
